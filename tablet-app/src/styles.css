@@ -1,0 +1,96 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #17211b;
+  background: #f2f0e9;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .45; }
+
+.app-shell { min-height: 100vh; padding: 18px; }
+.topbar, .section-heading, .cart-line, .total { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.topbar { background: #17211b; color: #fff; padding: 18px 22px; border-radius: 20px; }
+.topbar h1, .section-heading h2 { margin: 2px 0 0; }
+.eyebrow { margin: 0; color: #c28a47; font-size: .72rem; font-weight: 800; letter-spacing: .14em; }
+.topbar-actions { display: flex; align-items: center; gap: 12px; }
+.user-field { display: flex; align-items: center; gap: 8px; font-size: .8rem; color: #d6ddd8; }
+.user-field input { width: 68px; border: 1px solid #526158; border-radius: 10px; padding: 9px; color: #fff; background: #26342c; }
+.connection { padding: 9px 12px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+.connection.online { background: #244f34; color: #bff1cc; }
+.connection.offline { background: #5e332c; color: #ffd2ca; }
+.primary, .secondary { border: 0; border-radius: 12px; padding: 12px 16px; font-weight: 800; }
+.primary { color: #fff; background: #b9662f; }
+.secondary { color: #17211b; background: #ece8dd; }
+
+.notice { margin: 12px 0 0; padding: 12px 16px; border-radius: 12px; display: flex; justify-content: space-between; }
+.notice.success { background: #dff2e4; color: #174f29; }
+.notice.error { background: #f9ded9; color: #7b2d21; }
+.notice.info { background: #e5e9f1; }
+.notice button { border: 0; background: transparent; font-size: 1.2rem; }
+
+.tables-strip { display: flex; gap: 10px; padding: 14px 2px; overflow-x: auto; }
+.table-button { flex: 0 0 138px; min-height: 72px; border: 2px solid transparent; border-radius: 16px; text-align: left; padding: 12px 14px; }
+.table-button strong, .table-button span { display: block; }
+.table-button span { margin-top: 6px; font-size: .75rem; }
+.table-button.libre { background: #e0efe2; color: #245832; }
+.table-button.ocupada { background: #f6dfc5; color: #804616; }
+.table-button.selected { border-color: #17211b; }
+
+.workspace { display: grid; grid-template-columns: 170px minmax(320px, 1fr) minmax(330px, 390px); gap: 14px; min-height: calc(100vh - 180px); }
+.workspace.disabled { filter: saturate(.65); }
+.categories, .products, .order-panel { background: #fff; border: 1px solid #e1ded4; border-radius: 20px; }
+.categories { padding: 16px; }
+.categories h2 { font-size: 1rem; margin: 3px 6px 14px; }
+.categories button { width: 100%; border: 0; border-radius: 12px; background: transparent; padding: 14px 12px; margin-bottom: 6px; text-align: left; font-weight: 700; color: #59645d; }
+.categories button.active { color: #fff; background: #263d30; }
+.products { padding: 18px; overflow: hidden; }
+.section-heading > span { color: #7a837d; font-size: .78rem; }
+.product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin-top: 18px; max-height: calc(100vh - 285px); overflow-y: auto; padding-right: 4px; }
+.product-card { min-height: 166px; border: 1px solid #e4e0d5; border-radius: 16px; background: #fbfaf6; padding: 10px; display: flex; flex-direction: column; text-align: left; transition: transform .12s, border-color .12s; }
+.product-card:active { transform: scale(.97); }
+.product-card:hover { border-color: #b9662f; }
+.product-card img, .product-placeholder { width: 100%; height: 90px; border-radius: 11px; object-fit: cover; margin-bottom: 9px; }
+.product-placeholder { display: grid; place-items: center; background: #e8e3d5; color: #8b6a45; font-size: 2rem; font-weight: 900; }
+.product-card strong { line-height: 1.15; }
+.product-card > span:last-child { margin-top: auto; padding-top: 8px; color: #a25727; font-weight: 800; }
+
+.order-panel { display: flex; flex-direction: column; padding: 18px; min-height: 0; }
+.order-items { flex: 1; overflow-y: auto; margin: 15px -4px 12px 0; padding-right: 4px; }
+.saved-item, .cart-item { border-bottom: 1px solid #ece9e0; padding: 12px 2px; }
+.saved-item { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.saved-item small { display: block; color: #777; margin-top: 4px; }
+.status { border-radius: 999px; padding: 5px 8px; font-size: .68rem; text-transform: capitalize; background: #eee; white-space: nowrap; }
+.status.preparando { background: #fff0bf; color: #795a00; }
+.status.listo { background: #d9f1df; color: #25613a; }
+.status.entregado { background: #e1e7ed; color: #4c5965; }
+.cart-item { background: #fff8ed; border: 1px solid #eedabf; border-radius: 13px; padding: 11px; margin-bottom: 8px; }
+.quantity { display: flex; align-items: center; gap: 11px; margin: 9px 0; }
+.quantity button { width: 35px; height: 35px; border: 0; border-radius: 9px; background: #263d30; color: #fff; font-size: 1.2rem; }
+.cart-item input { width: 100%; border: 1px solid #d9d2c3; border-radius: 9px; padding: 9px; background: #fff; }
+.order-footer { border-top: 1px solid #e3e0d8; padding-top: 13px; }
+.total { padding: 5px 0; }
+.total strong { font-size: 1.25rem; }
+.secondary-total { color: #9b5b2b; font-size: .86rem; }
+.send-button { width: 100%; min-height: 54px; margin-top: 10px; font-size: 1rem; }
+.empty { color: #7b837e; text-align: center; padding: 24px 10px; grid-column: 1 / -1; }
+
+@media (max-width: 980px) {
+  .workspace { grid-template-columns: 140px 1fr; }
+  .order-panel { grid-column: 1 / -1; min-height: 430px; }
+  .product-grid { max-height: 500px; }
+}
+
+@media (max-width: 650px) {
+  .app-shell { padding: 8px; }
+  .topbar { align-items: flex-start; }
+  .topbar-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .workspace { display: block; }
+  .categories { display: flex; overflow-x: auto; padding: 10px; margin-bottom: 8px; }
+  .categories h2 { display: none; }
+  .categories button { width: auto; flex: 0 0 auto; margin: 0 5px 0 0; }
+  .products, .order-panel { margin-bottom: 8px; }
+}

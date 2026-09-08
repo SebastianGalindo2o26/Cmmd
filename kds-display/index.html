@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#101512" />
+    <title>KDS · Cocina</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main x-data="kds" x-cloak class="kds-shell">
+      <header class="kds-header">
+        <div>
+          <p class="eyebrow">SISTEMA DE COCINA</p>
+          <h1>Comandas activas</h1>
+        </div>
+        <div class="header-meta">
+          <span class="clock" x-text="clock"></span>
+          <span class="connection" :class="connected ? 'online' : 'offline'">
+            <span class="dot"></span>
+            <span x-text="connected ? 'En línea' : 'Reconectando'"></span>
+          </span>
+          <button @click="loadOrders" :disabled="loading">Actualizar</button>
+        </div>
+      </header>
+
+      <div x-show="notice" x-transition class="notice" :class="notice?.type">
+        <span x-text="notice?.text"></span>
+        <button @click="notice = null" aria-label="Cerrar mensaje">×</button>
+      </div>
+
+      <section class="summary">
+        <div><strong x-text="orders.length"></strong><span>órdenes</span></div>
+        <div><strong x-text="pendingItems"></strong><span>ítems activos</span></div>
+        <div><strong x-text="readyItems"></strong><span>listos</span></div>
+      </section>
+
+      <section class="orders-grid">
+        <template x-for="order in orders" :key="order.id">
+          <article class="order-card" :class="{ completed: allDelivered(order) }">
+            <header class="order-header">
+              <div>
+                <p>ORDEN <span x-text="`#${order.id}`"></span></p>
+                <h2 x-text="`Mesa ${order.mesa_numero}`"></h2>
+              </div>
+              <span class="elapsed" :class="elapsedClass(order)" x-text="elapsed(order)"></span>
+            </header>
+
+            <div class="items-list">
+              <template x-for="item in order.items" :key="item.id">
+                <article class="kitchen-item" :class="item.estado">
+                  <div class="item-copy">
+                    <div class="item-name">
+                      <strong x-text="`${item.cantidad}×`"></strong>
+                      <span x-text="item.producto_nombre"></span>
+                    </div>
+                    <p x-show="item.notas" x-text="item.notas"></p>
+                  </div>
+                  <div class="item-action">
+                    <span class="status" x-text="statusLabel(item.estado)"></span>
+                    <button
+                      x-show="nextState(item.estado)"
+                      @click="advance(order, item)"
+                      :disabled="busyItems.includes(item.id)"
+                      x-text="busyItems.includes(item.id) ? 'Guardando…' : actionLabel(item.estado)"
+                    ></button>
+                  </div>
+                </article>
+              </template>
+            </div>
+
+            <footer>
+              <span x-text="`${order.items.length} ítems`"></span>
+              <strong x-text="formatMoney(order.total)"></strong>
+            </footer>
+          </article>
+        </template>
+
+        <div class="empty-state" x-show="!loading && orders.length === 0">
+          <div>✓</div>
+          <h2>Sin comandas pendientes</h2>
+          <p>Las órdenes aparecerán aquí cuando el mesero las envíe.</p>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

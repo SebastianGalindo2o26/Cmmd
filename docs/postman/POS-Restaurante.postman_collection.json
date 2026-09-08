@@ -1,0 +1,284 @@
+{
+  "info": {
+    "_postman_id": "db63e063-bec4-4d37-a98e-cc001fa5e001",
+    "name": "POS Restaurante - Fase 1",
+    "description": "Prueba manual del backend. Antes de comenzar, ejecute las migraciones y el seed de desarrollo. Si usa Docker, cree un usuario directamente o ajuste usuario_id. Las pruebas automatizadas de Socket.io y concurrencia están en backend/integration/order-flow.js.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000/api" },
+    { "key": "usuario_id", "value": "1" },
+    { "key": "categoria_id", "value": "" },
+    { "key": "producto_id", "value": "" },
+    { "key": "mesa_id", "value": "" },
+    { "key": "orden_id", "value": "" },
+    { "key": "item_id", "value": "" },
+    { "key": "fecha_correlativo", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 - Salud",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/health"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('API saludable', () => {",
+          "  pm.response.to.have.status(200);",
+          "  pm.expect(pm.response.json().estado).to.eql('ok');",
+          "});"
+        ] }
+      }]
+    },
+    {
+      "name": "02 - Crear categoría",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nombre\": \"Bebidas Postman {{$timestamp}}\",\n  \"orden\": 1\n}"
+        },
+        "url": "{{base_url}}/categorias"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('Categoría creada', () => pm.response.to.have.status(201));",
+          "pm.collectionVariables.set('categoria_id', pm.response.json().id);"
+        ] }
+      }]
+    },
+    {
+      "name": "03 - Crear producto",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nombre\": \"Limonada Postman {{$timestamp}}\",\n  \"descripcion\": \"Producto de prueba\",\n  \"precio\": \"10.00\",\n  \"categoria_id\": {{categoria_id}}\n}"
+        },
+        "url": "{{base_url}}/productos"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('Producto creado', () => pm.response.to.have.status(201));",
+          "pm.collectionVariables.set('producto_id', pm.response.json().id);"
+        ] }
+      }]
+    },
+    {
+      "name": "04 - Crear mesa",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": { "exec": [
+            "pm.collectionVariables.set('numero_mesa_prueba', Math.floor(100000 + Math.random() * 800000));"
+          ] }
+        },
+        {
+          "listen": "test",
+          "script": { "exec": [
+            "pm.test('Mesa creada', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('mesa_id', pm.response.json().id);"
+          ] }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"numero\": {{numero_mesa_prueba}}\n}"
+        },
+        "url": "{{base_url}}/mesas"
+      }
+    },
+    {
+      "name": "05 - Abrir orden",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mesa_id\": {{mesa_id}},\n  \"usuario_id\": {{usuario_id}}\n}"
+        },
+        "url": "{{base_url}}/ordenes"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('Orden abierta', () => {",
+          "  pm.response.to.have.status(201);",
+          "  pm.expect(pm.response.json().estado).to.eql('abierta');",
+          "});",
+          "pm.collectionVariables.set('orden_id', pm.response.json().id);"
+        ] }
+      }]
+    },
+    {
+      "name": "06 - Agregar ítems",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"items\": [\n    {\n      \"producto_id\": {{producto_id}},\n      \"cantidad\": 2,\n      \"notas\": \"Sin hielo\"\n    }\n  ]\n}"
+        },
+        "url": "{{base_url}}/ordenes/{{orden_id}}/items"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('Ítem agregado y total recalculado', () => {",
+          "  pm.response.to.have.status(201);",
+          "  pm.expect(pm.response.json().total).to.eql('20.00');",
+          "});",
+          "pm.collectionVariables.set('item_id', pm.response.json().items[0].id);"
+        ] }
+      }]
+    },
+    {
+      "name": "07 - Enviar primera ronda a cocina",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{base_url}}/ordenes/{{orden_id}}/enviar-cocina"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('Primera ronda genera nueva_orden', () => {",
+          "  pm.response.to.have.status(200);",
+          "  pm.expect(pm.response.json().evento).to.eql('nueva_orden');",
+          "});"
+        ] }
+      }]
+    },
+    {
+      "name": "07b - Comandas activas de cocina",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/ordenes/cocina/activas"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('KDS puede recuperar la orden enviada', () => {",
+          "  pm.response.to.have.status(200);",
+          "  const orderId = Number(pm.collectionVariables.get('orden_id'));",
+          "  pm.expect(pm.response.json().some(order => order.id === orderId)).to.eql(true);",
+          "});"
+        ] }
+      }]
+    },
+    {
+      "name": "08 - Marcar preparando",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"estado\": \"preparando\"\n}" },
+        "url": "{{base_url}}/ordenes/{{orden_id}}/items/{{item_id}}/estado"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('Estado actualizado', () => {",
+          "  pm.response.to.have.status(200);",
+          "  pm.expect(pm.response.json().nuevo_estado).to.eql('preparando');",
+          "});"
+        ] }
+      }]
+    },
+    {
+      "name": "09 - Pago parcial",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"metodo\": \"efectivo\",\n  \"monto\": \"5.00\"\n}"
+        },
+        "url": "{{base_url}}/ordenes/{{orden_id}}/pagos"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('Pago parcial mantiene orden abierta', () => {",
+          "  pm.response.to.have.status(201);",
+          "  pm.expect(pm.response.json().saldo).to.eql('15.00');",
+          "  pm.expect(pm.response.json().orden_cerrada).to.eql(null);",
+          "});"
+        ] }
+      }]
+    },
+    {
+      "name": "10 - Pago final y cierre",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"metodo\": \"tarjeta\",\n  \"monto\": \"15.00\"\n}"
+        },
+        "url": "{{base_url}}/ordenes/{{orden_id}}/pagos"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "const body = pm.response.json();",
+          "pm.test('Pago final cierra y asigna correlativo', () => {",
+          "  pm.response.to.have.status(201);",
+          "  pm.expect(body.saldo).to.eql('0.00');",
+          "  pm.expect(body.orden_cerrada.estado).to.eql('pagada');",
+          "  pm.expect(body.orden_cerrada.correlativo).to.be.above(0);",
+          "});",
+          "pm.collectionVariables.set('fecha_correlativo', body.orden_cerrada.fecha_correlativo);"
+        ] }
+      }]
+    },
+    {
+      "name": "11 - Consultar orden cerrada",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/ordenes/{{orden_id}}"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('Orden íntegra', () => {",
+          "  const body = pm.response.json();",
+          "  pm.response.to.have.status(200);",
+          "  pm.expect(body.estado).to.eql('pagada');",
+          "  pm.expect(body.pagos).to.have.length(2);",
+          "  pm.expect(body.total_pagado).to.eql(body.total);",
+          "});"
+        ] }
+      }]
+    },
+    {
+      "name": "12 - Historial del día",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/ordenes/dia/{{fecha_correlativo}}"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": [
+          "pm.test('Historial contiene la orden', () => {",
+          "  pm.response.to.have.status(200);",
+          "  const orderId = Number(pm.collectionVariables.get('orden_id'));",
+          "  pm.expect(pm.response.json().some(order => order.id === orderId)).to.eql(true);",
+          "});"
+        ] }
+      }]
+    }
+  ]
+}

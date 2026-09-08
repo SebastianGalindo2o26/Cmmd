@@ -1,0 +1,24 @@
+{
+  "name": "pos-restaurante",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "backend",
+    "tablet-app",
+    "kds-display"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace backend",
+    "dev:tablet": "npm run dev --workspace tablet-app",
+    "dev:kds": "npm run dev --workspace kds-display",
+    "build:frontends": "npm run build --workspace tablet-app && npm run build --workspace kds-display",
+    "start": "npm run start --workspace backend",
+    "migrate": "npm run migrate --workspace backend",
+    "seed:dev": "npm run seed:dev --workspace backend",
+    "test:integration": "npm run test:integration --workspace backend",
+    "test": "npm run test --workspace backend"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@pos-restaurante/backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "migrate": "node src/db/migrate.js",
+    "seed:dev": "node src/db/seed-development.js",
+    "test:integration": "node integration/order-flow.js",
+    "test": "node --test --test-isolation=none"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "pg": "^8.16.3",
+    "socket.io": "^4.8.1",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
+  }
+}
