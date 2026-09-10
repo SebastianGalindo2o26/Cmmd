@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api.js';
+import { PaymentDialog, PaymentReceipt } from './components/PaymentDialog.jsx';
 import { useSocket } from './hooks/useSocket.js';
 
 const currency = new Intl.NumberFormat('es-GT', {
@@ -21,6 +22,8 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [receipt, setReceipt] = useState(null);
   const [userId, setUserId] = useState(() => Number(
     localStorage.getItem('pos_usuario_id') || import.meta.env.VITE_USUARIO_ID || 1,
   ));
@@ -77,8 +80,13 @@ function App() {
     orden_actualizada: (payload) => {
       if (order?.id === payload.id) loadOrder(payload.id).catch(handleError);
     },
+    pago_registrado: (payload) => {
+      if (order?.id === payload.orden_id) loadOrder(payload.orden_id).catch(handleError);
+    },
     orden_cerrada: (payload) => {
       if (order?.id === payload.id) {
+        setReceipt({ ...payload, mesa_numero: order.mesa_numero });
+        setPaymentOpen(false);
         setOrder(null);
         setCart([]);
         showMessage(`Orden #${payload.correlativo} cobrada; mesa liberada.`, 'success');
@@ -133,6 +141,7 @@ function App() {
         });
       setOrder(selected);
       setCart([]);
+      setPaymentOpen(false);
       await loadTables();
     } catch (error) {
       handleError(error);
@@ -207,6 +216,57 @@ function App() {
     return trimmed || null;
   }
 
+  function openPayment() {
+    if (!order || busy) return;
+    if (cart.length || hasUnsentItems) {
+      showMessage('Envía a cocina todos los productos antes de cobrar.', 'error');
+      return;
+    }
+    if (Number(order.total) <= 0) {
+      showMessage('Agrega productos antes de cobrar la orden.', 'error');
+      return;
+    }
+    setMessage(null);
+    setPaymentOpen(true);
+  }
+
+  async function registerPayment(payment) {
+    if (!order || busy) return;
+    const currentOrder = order;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await api(`/ordenes/${currentOrder.id}/pagos`, {
+        method: 'POST',
+        body: JSON.stringify(payment),
+      });
+
+      if (result.orden_cerrada) {
+        setReceipt({ ...result.orden_cerrada, mesa_numero: currentOrder.mesa_numero });
+        setPaymentOpen(false);
+        setOrder(null);
+        setCart([]);
+        await loadTables();
+        showMessage(
+          `Orden #${result.orden_cerrada.correlativo} cobrada; mesa liberada.`,
+          'success',
+        );
+      } else {
+        await loadOrder(currentOrder.id);
+        showMessage(`Pago registrado. Saldo pendiente: ${money(result.saldo)}.`, 'success');
+      }
+    } catch (error) {
+      handleError(error);
+      await loadOrder(currentOrder.id).catch(() => {
+        setPaymentOpen(false);
+        setOrder(null);
+      });
+      await loadTables().catch(() => {});
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -229,9 +289,22 @@ function App() {
             {connected ? 'En línea' : 'Sin tiempo real'}
           </span>
           {order && (
-            <button className="secondary" onClick={() => { setOrder(null); setCart([]); }}>
-              Cambiar mesa
-            </button>
+            <>
+              <button
+                className="charge-button"
+                onClick={openPayment}
+                disabled={busy || Number(order.total) <= 0}
+                title={cart.length || hasUnsentItems ? 'Envía primero los productos a cocina' : ''}
+              >
+                Cobrar {Number(order.saldo) > 0 ? money(order.saldo) : ''}
+              </button>
+              <button
+                className="secondary"
+                onClick={() => { setOrder(null); setCart([]); setPaymentOpen(false); }}
+              >
+                Cambiar mesa
+              </button>
+            </>
           )}
         </div>
       </header>
@@ -351,6 +424,18 @@ function App() {
               <span>Total guardado</span>
               <strong>{money(order?.total)}</strong>
             </div>
+            {order && Number(order.total_pagado) > 0 && (
+              <>
+                <div className="total paid-total">
+                  <span>Pagado</span>
+                  <strong>{money(order.total_pagado)}</strong>
+                </div>
+                <div className="total balance-total">
+                  <span>Saldo</span>
+                  <strong>{money(order.saldo)}</strong>
+                </div>
+              </>
+            )}
             <button
               className="primary send-button"
               disabled={!order || busy || (!cart.length && !hasUnsentItems)}
@@ -361,6 +446,20 @@ function App() {
           </footer>
         </aside>
       </section>
+
+      {paymentOpen && order && (
+        <PaymentDialog
+          order={order}
+          busy={busy}
+          money={money}
+          onClose={() => setPaymentOpen(false)}
+          onPay={registerPayment}
+        />
+      )}
+
+      {receipt && (
+        <PaymentReceipt receipt={receipt} money={money} onClose={() => setReceipt(null)} />
+      )}
     </main>
   );
 }

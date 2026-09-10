@@ -12,7 +12,14 @@ export function useSocket(handlers) {
 
     socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
-    for (const event of ['conexion_lista', 'mesa_actualizada', 'orden_actualizada', 'item_estado_cambiado', 'orden_cerrada']) {
+    for (const event of [
+      'conexion_lista',
+      'mesa_actualizada',
+      'orden_actualizada',
+      'item_estado_cambiado',
+      'pago_registrado',
+      'orden_cerrada',
+    ]) {
       socket.on(event, (payload) => handlersRef.current[event]?.(payload));
     }
 

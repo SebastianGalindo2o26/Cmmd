@@ -175,12 +175,20 @@ try {
   });
   assert.equal(repeatedState.cambio, false);
 
+  const partialEvent = waitForEvent(
+    tablet,
+    'pago_registrado',
+    (payload) => payload.orden_id === orderOne.id,
+  );
   const partial = await request(`/ordenes/${orderOne.id}/pagos`, {
     method: 'POST',
     body: JSON.stringify({ metodo: 'efectivo', monto: '10.00' }),
   });
+  const partialPayload = await partialEvent;
   assert.equal(partial.saldo, '30.00');
   assert.equal(partial.orden_cerrada, null);
+  assert.equal(partialPayload.total_pagado, '10.00');
+  assert.equal(partialPayload.saldo, '30.00');
   await expectStatus(409, () => request(`/ordenes/${orderOne.id}/pagos`, {
     method: 'POST',
     body: JSON.stringify({ metodo: 'tarjeta', monto: '30.01' }),
@@ -231,7 +239,13 @@ try {
   console.log('Flujo integral aprobado:', {
     ordenes: created.orderIds,
     correlativos: closures.map((order) => order.correlativo),
-    eventos: ['nueva_orden', 'orden_actualizada', 'item_estado_cambiado', 'orden_cerrada'],
+    eventos: [
+      'nueva_orden',
+      'orden_actualizada',
+      'item_estado_cambiado',
+      'pago_registrado',
+      'orden_cerrada',
+    ],
   });
 } finally {
   kds.close();

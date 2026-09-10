@@ -415,10 +415,18 @@ ordenesRouter.post('/:id/pagos', async (req, res) => {
     };
   });
 
+  const io = req.app.get('io');
   if (result.orden_cerrada) {
-    const io = req.app.get('io');
     emitTo(io, 'tablet', 'orden_cerrada', result.orden_cerrada);
     emitTo(io, 'kds', 'orden_cerrada', result.orden_cerrada);
+  } else {
+    emitTo(io, 'tablet', 'pago_registrado', {
+      orden_id: orderId,
+      pago: result.pago,
+      total: result.total,
+      total_pagado: result.total_pagado,
+      saldo: result.saldo,
+    });
   }
   res.status(201).json(result);
 });

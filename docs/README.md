@@ -14,7 +14,7 @@ cómo funciona, por qué se construyó de esta manera, cómo ejecutarlo y qué f
 
 | Entregable | Estado | Motivo |
 |---|---|---|
-| Repositorio Git | Listo | Permite versionar los cambios desde el inicio. Todavía no hay commits. |
+| Repositorio Git | Listo | Las fases 0, 1 y 2 tienen un commit base local; los cambios de la fase actual quedan visibles por separado. |
 | Monorepo | Listo | Backend, aplicaciones y archivos de infraestructura evolucionarán juntos y compartirán contratos. |
 | Entorno Node.js | Listo | El backend usa Node.js 22 o superior y npm workspaces. |
 | Docker y PostgreSQL | Listo | Reproduce el mismo entorno en desarrollo y en la futura mini PC del restaurante. |
@@ -44,8 +44,8 @@ Ya está implementado:
 - Correlativo diario asignado con bloqueo transaccional.
 - Liberación de la mesa dentro de la misma transacción del cierre.
 - Socket.io con salas separadas para cocina, tablet y administración.
-- Eventos `nueva_orden`, `orden_actualizada`, `item_estado_cambiado` y
-  `orden_cerrada`; la fase 2 añade `mesa_actualizada` para sincronizar tablets.
+- Eventos `nueva_orden`, `orden_actualizada`, `item_estado_cambiado`,
+  `mesa_actualizada`, `pago_registrado` y `orden_cerrada`.
 - Validación de cuerpos, parámetros y filtros.
 - Transacciones para todas las escrituras implementadas.
 - Respuestas HTTP y manejo centralizado de errores.
@@ -85,6 +85,29 @@ Ya se crearon los dos prototipos:
 La fase 2 está cerrada para el entorno local. Solo queda como validación de
 instalación probarla desde dos dispositivos físicos en la red del restaurante;
 esto no cambia el código del prototipo.
+
+### Fase 3 — completada localmente
+
+La tablet incorpora el flujo de caja previsto en el plan:
+
+- Botón de cobro asociado a la orden y mesa seleccionadas.
+- Resumen de productos, total, total pagado y saldo pendiente.
+- Selección de efectivo o tarjeta; “tarjeta” registra el resultado del datáfono
+  externo, no procesa una transacción bancaria.
+- Pago completo o pagos divididos por monto y método.
+- Historial de pagos parciales con hora, método e importe.
+- Validación en centavos para no depender de aritmética de punto flotante.
+- Bloqueo del cobro cuando hay productos locales o guardados aún no enviados a
+  cocina, evitando cerrar una cuenta incompleta por accidente.
+- Actualización entre tablets mediante `pago_registrado` cuando el pago todavía
+  no completa el saldo.
+- Comprobante final con total, fecha y correlativo diario.
+- Cierre automático, liberación de mesa y retiro de la comanda del KDS.
+
+El backend conserva la autoridad sobre el saldo, rechaza sobrepagos y ejecuta el
+pago final, correlativo, cierre y liberación de mesa en una sola transacción.
+Las validaciones de la interfaz mejoran la experiencia, pero no sustituyen esas
+protecciones del servidor.
 
 ## Arquitectura actual
 
@@ -574,6 +597,24 @@ El último pago, la asignación del correlativo, el cierre y la liberación de m
 son atómicos. Dos pagos concurrentes bloquean la misma orden; dos cierres de
 órdenes diferentes bloquean el contador del día y reciben números diferentes.
 
+### Pantalla de cobro de la tablet
+
+Después de enviar todos los productos a cocina aparece **Cobrar** en la barra
+superior. El diálogo toma el saldo desde la orden guardada, no desde el carrito
+local. Al registrar un pago parcial permanece abierto, vuelve a consultar la
+orden y muestra el nuevo saldo y el historial. El botón **Saldo completo** llena
+el importe exacto y **Mitad** facilita un primer pago dividido.
+
+Los importes aceptan punto o coma en la interfaz y se normalizan a dos decimales
+antes de enviarse. La validación usa centavos enteros para comparar el monto con
+el saldo sin introducir errores binarios de punto flotante. El backend vuelve a
+validar el monto dentro de la transacción porque el saldo puede haber cambiado
+por un cobro simultáneo.
+
+Al completar el saldo se presenta un comprobante local con correlativo, fecha y
+total. No es una factura fiscal ni un comprobante bancario; la facturación sigue
+fuera del alcance y los pagos con tarjeta se realizan en un datáfono separado.
+
 ### Socket.io
 
 Socket.io comparte `http://localhost:3000` con Express. Un cliente se registra
@@ -594,6 +635,7 @@ conectarse recibe `conexion_lista`.
 | `nueva_orden` | `kds` | Primera ronda enviada. |
 | `orden_actualizada` | `kds`, `tablet` | Ronda posterior enviada. |
 | `item_estado_cambiado` | `tablet` | Cocina avanza un ítem. |
+| `pago_registrado` | `tablet` | Un pago parcial modifica lo pagado y el saldo. |
 | `orden_cerrada` | `kds`, `tablet` | El pago completa el total. |
 
 ## Prototipos de fase 2
@@ -726,14 +768,14 @@ el acceso por la red autorizada.
 
 ## Pruebas realizadas
 
-La entrega actual fue verificada el 8 de septiembre de 2026 de las siguientes
-maneras:
+La entrega actual fue verificada por última vez el 10 de septiembre de 2026 de
+las siguientes maneras:
 
 - Instalación y auditoría de 183 paquetes npm sin vulnerabilidades reportadas.
 - Comprobación de sintaxis de todos los archivos JavaScript.
 - Validación de `docker-compose.yml`.
-- Tres pruebas unitarias aprobadas para IDs y validación de datos.
-- Compilación de producción de tablet con 60 módulos y KDS con 34 módulos.
+- Seis pruebas unitarias aprobadas: tres del backend y tres de importes de cobro.
+- Compilación de producción de tablet con 62 módulos y KDS con 34 módulos.
 - Construcción exitosa de las imágenes Docker `infra-backend` e `infra-web`.
 - Inicio real y simultáneo de PostgreSQL, backend y Nginx.
 - Aplicación de `001_initial_schema.sql`.
@@ -749,13 +791,17 @@ maneras:
   depuración: ambas cargaron datos, quedaron en línea y no emitieron excepciones
   JavaScript.
 - Flujo integral con dos mesas, dos órdenes, dos rondas y pagos divididos.
-- Recepción comprobada de los cuatro eventos Socket.io.
+- Recepción comprobada de los cinco eventos Socket.io del flujo integral,
+  incluido `pago_registrado` para el pago parcial.
 - Rechazo comprobado de mesa ocupada, ronda vacía y sobrepago.
 - Dos cierres ejecutados en paralelo con correlativos diferentes.
 - Confirmación de cierre, saldo cero, historial y liberación de ambas mesas.
 - Repetición del flujo integral usando `http://localhost/api` y
   `http://localhost` para comprobar juntos los proxies HTTP y WebSocket de
   Nginx.
+- Prueba de navegador de la fase 3 con una orden de Q52.00: pago de Q10.00 por
+  tarjeta, saldo actualizado a Q42.00, pago final en efectivo, correlativo,
+  mesa liberada y cero excepciones JavaScript.
 
 La revisión visual detectó inicialmente que Nginx entregaba `.js` y `.css` como
 `text/plain`. Se añadió el archivo oficial `mime.types` a `nginx.conf`, se
@@ -786,10 +832,11 @@ También puede importarse en Postman la colección
 
 Después de la verificación los contenedores fueron detenidos con `docker compose
 down`. El volumen de PostgreSQL se conservó junto con el catálogo del seed. Los
-datos temporales creados por la prueba integral se eliminaron al finalizar la
-propia prueba.
+datos temporales creados por las pruebas integral y visual se eliminaron al
+finalizar; el contador del día de la prueba visual también se retiró al no tener
+órdenes asociadas.
 
-## Cómo repetir la prueba de fase 2
+## Cómo repetir la prueba de las fases 2 y 3
 
 Este procedimiento sirve para repetir la validación en otro momento desde la
 raíz del repositorio.
@@ -827,7 +874,10 @@ raíz del repositorio.
 
    En tablet, abrir una mesa, agregar uno o varios productos y usar **Enviar a
    cocina**. La comanda debe aparecer sin recargar en el KDS. Al avanzar un ítem
-   en cocina, su nuevo estado debe aparecer en tablet.
+   en cocina, su nuevo estado debe aparecer en tablet. Después seleccionar
+   **Cobrar**, registrar primero un monto menor al saldo con un método y completar
+   el resto con el otro. Deben mostrarse el historial, saldo cero, correlativo y
+   mesa liberada.
 
 5. Ejecutar la validación automatizada completa por Nginx:
 
@@ -857,6 +907,6 @@ en la etapa de despliegue.
 
 ## Siguiente fase
 
-La fase 3 agregará la pantalla de caja y cobro sobre los endpoints de pagos ya
-implementados. Login y roles completos siguen reservados para una fase
-posterior.
+La fase 4 agregará el panel de administración: catálogo con imágenes, historial
+del día, reportes básicos y gestión de usuarios. Login y aplicación completa de
+roles siguen reservados para la etapa indicada en el plan.

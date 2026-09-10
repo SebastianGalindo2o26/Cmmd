@@ -25,6 +25,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .primary, .secondary { border: 0; border-radius: 12px; padding: 12px 16px; font-weight: 800; }
 .primary { color: #fff; background: #b9662f; }
 .secondary { color: #17211b; background: #ece8dd; }
+.charge-button { border: 0; border-radius: 12px; padding: 12px 16px; color: #17211b; background: #f2b24f; font-weight: 900; }
 
 .notice { margin: 12px 0 0; padding: 12px 16px; border-radius: 12px; display: flex; justify-content: space-between; }
 .notice.success { background: #dff2e4; color: #174f29; }
@@ -75,8 +76,58 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .total { padding: 5px 0; }
 .total strong { font-size: 1.25rem; }
 .secondary-total { color: #9b5b2b; font-size: .86rem; }
+.paid-total { color: #2c6a42; font-size: .86rem; }
+.balance-total { margin-top: 2px; color: #8e4621; }
 .send-button { width: 100%; min-height: 54px; margin-top: 10px; font-size: 1rem; }
 .empty { color: #7b837e; text-align: center; padding: 24px 10px; grid-column: 1 / -1; }
+
+.dialog-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; overflow-y: auto; background: rgb(10 17 13 / 72%); backdrop-filter: blur(5px); }
+.payment-dialog { width: min(980px, 100%); max-height: calc(100vh - 48px); overflow-y: auto; border-radius: 24px; background: #f8f6ef; box-shadow: 0 28px 80px rgb(0 0 0 / 35%); }
+.dialog-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 24px; color: #fff; background: #17211b; }
+.dialog-header h2 { margin: 3px 0 0; }
+.icon-button { width: 42px; height: 42px; border: 1px solid #526158; border-radius: 50%; color: #fff; background: transparent; font-size: 1.6rem; line-height: 1; }
+.payment-layout { display: grid; grid-template-columns: 1.05fr .95fr; gap: 0; }
+.bill-summary, .payment-form { padding: 24px; }
+.bill-summary { border-right: 1px solid #ded9cd; background: #fff; }
+.bill-summary h3, .payment-history h3 { margin: 0 0 14px; font-size: .88rem; color: #657068; text-transform: uppercase; letter-spacing: .06em; }
+.bill-items { max-height: 230px; overflow-y: auto; padding-right: 5px; }
+.bill-item, .payment-history > div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid #eeeae1; }
+.bill-item strong, .payment-history strong { white-space: nowrap; }
+.balance-summary { margin: 18px 0 0; padding-top: 10px; border-top: 2px solid #ded9cd; }
+.balance-summary > div { display: flex; justify-content: space-between; gap: 16px; margin: 9px 0; }
+.balance-summary dt, .balance-summary dd { margin: 0; }
+.balance-summary dd { font-weight: 800; }
+.balance-summary .balance-due { margin-top: 13px; padding-top: 13px; border-top: 1px solid #ded9cd; color: #954719; font-size: 1.12rem; }
+.payment-history { margin-top: 24px; }
+.payment-history > div { font-size: .86rem; }
+.payment-form { display: flex; flex-direction: column; }
+.payment-form fieldset { margin: 0; padding: 0; border: 0; }
+.payment-form legend { margin-bottom: 12px; font-weight: 800; }
+.method-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.method-options label { display: flex; align-items: center; gap: 10px; min-height: 72px; padding: 14px; border: 2px solid #ded9cd; border-radius: 15px; background: #fff; cursor: pointer; }
+.method-options label.selected { border-color: #2f6342; background: #e4f0e7; }
+.method-options input { position: absolute; opacity: 0; pointer-events: none; }
+.method-options label > span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: #fff; background: #263d30; font-weight: 900; }
+.amount-field { display: block; margin-top: 24px; font-weight: 800; }
+.payment-form .money-input { display: flex; align-items: center; margin-top: 8px; overflow: hidden; border: 2px solid #cfc8b9; border-radius: 15px; background: #fff; }
+.payment-form .money-input:focus-within { border-color: #2f6342; box-shadow: 0 0 0 3px rgb(47 99 66 / 12%); }
+.payment-form .money-input > span { padding: 0 0 0 16px; color: #7b5d3d; font-size: 1.25rem; font-weight: 900; }
+.payment-form .money-input input { width: 100%; min-width: 0; padding: 15px; border: 0; outline: 0; color: #17211b; background: transparent; font-size: 1.55rem; font-weight: 900; text-align: right; }
+.quick-amounts { display: flex; gap: 8px; margin-top: 10px; }
+.quick-amounts button { flex: 1; min-height: 38px; padding: 8px 10px; border: 1px solid #d6d0c2; border-radius: 10px; background: #fff; font-weight: 700; }
+.field-error, .field-help { min-height: 38px; margin: 10px 0 0; font-size: .82rem; }
+.field-error { color: #a33020; }
+.field-help { color: #687269; }
+.dialog-actions { display: grid; grid-template-columns: auto 1fr; gap: 10px; margin-top: auto; padding-top: 18px; }
+.dialog-actions button { min-height: 52px; }
+.receipt-dialog { width: min(430px, 100%); padding: 32px; border-radius: 24px; background: #fff; box-shadow: 0 28px 80px rgb(0 0 0 / 35%); text-align: center; }
+.receipt-dialog h2 { margin: 5px 0 8px; font-size: 2rem; }
+.receipt-dialog > p:not(.eyebrow) { color: #687269; }
+.receipt-dialog > button { width: 100%; min-height: 52px; margin-top: 20px; }
+.receipt-check { display: grid; place-items: center; width: 70px; height: 70px; margin: 0 auto 18px; border-radius: 50%; color: #fff; background: #31824d; font-size: 2.3rem; }
+.receipt-total { display: flex; justify-content: space-between; gap: 15px; margin: 24px 0 10px; padding: 18px; border-radius: 14px; background: #edf4ee; }
+.receipt-total strong { font-size: 1.2rem; }
+.receipt-dialog small { color: #79817b; }
 
 @media (max-width: 980px) {
   .workspace { grid-template-columns: 140px 1fr; }
@@ -93,4 +144,9 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .categories h2 { display: none; }
   .categories button { width: auto; flex: 0 0 auto; margin: 0 5px 0 0; }
   .products, .order-panel { margin-bottom: 8px; }
+  .dialog-backdrop { place-items: start center; padding: 8px; }
+  .payment-dialog { max-height: none; border-radius: 18px; }
+  .payment-layout { display: block; }
+  .bill-summary { border-right: 0; border-bottom: 1px solid #ded9cd; }
+  .dialog-header, .bill-summary, .payment-form { padding: 18px; }
 }
