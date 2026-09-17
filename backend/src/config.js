@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import path from 'node:path';
 
 function required(name) {
   const value = process.env[name];
@@ -31,4 +32,5 @@ export const config = Object.freeze({
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: readPort(),
   restaurantTimezone: readTimezone(),
+  uploadDir: path.resolve(process.cwd(), process.env.UPLOAD_DIR ?? 'uploads'),
 });

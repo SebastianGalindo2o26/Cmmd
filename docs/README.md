@@ -1,7 +1,8 @@
 # POS Restaurante
 
 Sistema de punto de venta local para restaurante. Actualmente incluye el
-backend transaccional, la tablet del mesero y el KDS de cocina. El alcance
+backend transaccional, la tablet del mesero, el KDS de cocina y el panel de
+administración. El alcance
 general, las fases y las reglas de negocio se encuentran en
 [`plan-pos-restaurante.md`](../plan-pos-restaurante.md).
 
@@ -14,11 +15,11 @@ cómo funciona, por qué se construyó de esta manera, cómo ejecutarlo y qué f
 
 | Entregable | Estado | Motivo |
 |---|---|---|
-| Repositorio Git | Listo | Las fases 0, 1 y 2 tienen un commit base local; los cambios de la fase actual quedan visibles por separado. |
+| Repositorio Git | Listo | Las fases 0, 1, 2 y 3 tienen commits; los cambios de fase 4 quedan visibles por separado hasta su commit. |
 | Monorepo | Listo | Backend, aplicaciones y archivos de infraestructura evolucionarán juntos y compartirán contratos. |
 | Entorno Node.js | Listo | El backend usa Node.js 22 o superior y npm workspaces. |
 | Docker y PostgreSQL | Listo | Reproduce el mismo entorno en desarrollo y en la futura mini PC del restaurante. |
-| Estructura de carpetas | Lista | Cada aplicación tiene ubicación propia; tablet y cocina ya contienen el prototipo de fase 2. |
+| Estructura de carpetas | Lista | Cada aplicación tiene ubicación propia; tablet, cocina y administración se compilan desde el monorepo. |
 | Diagrama de datos | Listo | Está en [`modelo-datos.md`](modelo-datos.md). |
 | Variables de entorno | Listas | `.env.example` documenta la configuración sin guardar secretos reales en Git. |
 
@@ -52,13 +53,11 @@ Ya está implementado:
 - Endpoint de salud de la API y la base de datos.
 - Pruebas unitarias de las utilidades de validación.
 
-Fuera de la fase 1 y todavía no implementado:
+Pendiente después de las fases implementadas:
 
 - CRUD de modificadores.
-- Usuarios, contraseñas, autenticación y roles.
-- Reportes.
-- Carga y optimización real de imágenes.
-- Panel administrativo y diseño visual definitivo de tablet/cocina.
+- Autenticación, contraseñas con hash y autorización efectiva por rol.
+- Diseño visual definitivo de tablet/cocina.
 
 La API de fase 1 cubre el flujo completo: catálogo → mesa → orden → rondas de
 cocina → estados → uno o varios pagos → correlativo y cierre. El código de fase
@@ -109,6 +108,24 @@ pago final, correlativo, cierre y liberación de mesa en una sola transacción.
 Las validaciones de la interfaz mejoran la experiencia, pero no sustituyen esas
 protecciones del servidor.
 
+### Fase 4 - completada localmente
+
+La administracion operativa ya esta disponible en `http://localhost/admin/`.
+Incluye:
+
+- CRUD de categorias y productos desde el navegador.
+- Activacion/desactivacion de productos sin borrar el historial.
+- Carga de imagenes por `multipart/form-data`; el backend las rota, limita a
+  1200x1200, convierte a WebP (calidad 82) y las sirve desde `/uploads/`.
+- Historial diario de ordenes con correlativo, mesa, mesero, total y estado.
+- Reporte diario con ventas cobradas, metodos de pago y productos mas vendidos.
+- CRUD de usuarios con roles `mesero`, `cocina`, `cajero` y `admin`.
+
+El panel usa la misma API y el mismo proxy de Nginx que tablet y cocina. La
+gestion de usuarios es administrativa, pero todavia no autentica sesiones ni
+protege rutas por rol; autenticacion, contrasenas con hash y autorizacion quedan
+para la fase de endurecimiento indicada en el plan.
+
 ## Arquitectura actual
 
 ```text
@@ -124,10 +141,11 @@ El Compose define tres servicios:
 - `postgres`: almacena la información en el volumen persistente `pgdata`.
 - `backend`: ejecuta primero las migraciones y después inicia Express y
   Socket.io sobre el mismo puerto.
-- `web`: compila los dos frontends y usa Nginx para servirlos y dirigir las
+- `web`: compila los tres frontends y usa Nginx para servirlos y dirigir las
   solicitudes `/api` y `/socket.io` al backend.
 
-La ruta `/admin` continúa reservada y todavía no tiene una aplicación.
+La ruta `/admin/` sirve el panel de administración y comparte el proxy `/api`
+con tablet y cocina.
 
 ### Decisiones y razones
 
@@ -211,11 +229,11 @@ proyectos. Puede migrarse a TypeScript si el sistema crece.
 │   │   ├── config.js             Variables de entorno
 │   │   └── server.js             Inicio y cierre controlado del servidor
 │   ├── test/                     Pruebas unitarias
-│   ├── uploads/                  Futuras imágenes de productos
+│   ├── uploads/                  Imágenes WebP optimizadas (persistencia local)
 │   └── Dockerfile
 ├── tablet-app/                   Prototipo React para el mesero
 ├── kds-display/                  Prototipo Alpine.js para cocina
-├── admin-panel/                  Reservado para administración
+├── admin-panel/                  Panel React de administración
 ├── shared/types.js               Contratos de datos compartidos
 ├── infra/
 │   ├── docker-compose.yml        PostgreSQL, backend y servidor web
@@ -230,8 +248,8 @@ proyectos. Puede migrarse a TypeScript si el sistema crece.
 └── plan-pos-restaurante.md       Plan funcional completo
 ```
 
-La carpeta de administración sigue siendo un marcador. Tablet y cocina contienen
-los prototipos construidos y verificados de la fase 2.
+El panel de administración, tablet y cocina se compilan juntos en la imagen web.
+Los tres quedan publicados por Nginx en `/admin/`, `/tablet/` y `/kds/`.
 
 ## Modelo de datos implementado
 
@@ -461,6 +479,7 @@ declarados son rechazados para detectar errores de escritura en los clientes.
 | `GET` | `/api/productos` | Lista productos por nombre. |
 | `GET` | `/api/productos/:id` | Consulta un producto. |
 | `POST` | `/api/productos` | Crea un producto. |
+| `POST` | `/api/productos/:id/imagen` | Recibe `imagen` y guarda una versión WebP optimizada. |
 | `PUT` | `/api/productos/:id` | Reemplaza los campos editables. |
 | `DELETE` | `/api/productos/:id` | Desactiva el producto. |
 
@@ -489,8 +508,26 @@ GET /api/productos?categoria_id=1&activo=true
 ```
 
 La respuesta incluye `categoria_nombre` en los listados y consultas individuales.
-La carga del archivo de imagen todavía no existe; por ahora la API únicamente
-guarda la ruta recibida en `imagen_url`.
+La carga acepta JPG, PNG, WebP o GIF de hasta 5 MB. La imagen se rota según sus
+metadatos, se reduce sin ampliar y se convierte a WebP antes de guardarse en
+`UPLOAD_DIR` (por defecto `backend/uploads`). La respuesta actualiza
+`imagen_url` con una ruta `/uploads/...`.
+
+### Administración, historial y reportes
+
+| Método | Ruta | Resultado |
+|---|---|---|
+| `GET` | `/api/ordenes/dia/:fecha` | Historial de órdenes del día con correlativo. |
+| `GET` | `/api/reportes/ventas-dia?fecha=YYYY-MM-DD&limite=10` | Resumen de ventas, pagos por método y productos top. |
+| `GET` | `/api/reportes/productos-top?fecha=YYYY-MM-DD&limite=10` | Productos más vendidos del día. |
+| `GET` | `/api/usuarios` | Lista personal y roles, sin contraseñas. |
+| `POST` | `/api/usuarios` | Crea un usuario administrativo. |
+| `PUT` | `/api/usuarios/:id` | Actualiza nombre, usuario, rol y estado. |
+| `DELETE` | `/api/usuarios/:id` | Desactiva el usuario sin borrar su registro. |
+
+El panel web consume estas rutas desde `/admin/`. Los usuarios de esta fase aún
+no son credenciales de inicio de sesión: el campo de contraseña permanece
+reservado hasta implementar autenticación y autorización por rol.
 
 ### Mesas
 
@@ -768,14 +805,16 @@ el acceso por la red autorizada.
 
 ## Pruebas realizadas
 
-La entrega actual fue verificada por última vez el 10 de septiembre de 2026 de
+La entrega actual fue verificada por última vez el 17 de septiembre de 2026 de
 las siguientes maneras:
 
-- Instalación y auditoría de 183 paquetes npm sin vulnerabilidades reportadas.
+- Instalación y auditoría de las dependencias npm sin vulnerabilidades reportadas
+  (`npm audit --omit=dev` y auditoría completa: 0 vulnerabilidades).
 - Comprobación de sintaxis de todos los archivos JavaScript.
 - Validación de `docker-compose.yml`.
 - Seis pruebas unitarias aprobadas: tres del backend y tres de importes de cobro.
-- Compilación de producción de tablet con 62 módulos y KDS con 34 módulos.
+- Compilación de producción de tablet con 62 módulos, KDS con 34 y administración
+  con 30 módulos.
 - Construcción exitosa de las imágenes Docker `infra-backend` e `infra-web`.
 - Inicio real y simultáneo de PostgreSQL, backend y Nginx.
 - Aplicación de `001_initial_schema.sql`.
@@ -802,6 +841,12 @@ las siguientes maneras:
 - Prueba de navegador de la fase 3 con una orden de Q52.00: pago de Q10.00 por
   tarjeta, saldo actualizado a Q42.00, pago final en efectivo, correlativo,
   mesa liberada y cero excepciones JavaScript.
+- Validación de fase 4 por Nginx: `/admin/` respondió `200`, cargó categorías y
+  siete productos en Chrome headless, y sus assets se sirvieron con MIME correcto.
+- Subida real de imagen de producto: PNG convertido a WebP, servido con `200`
+  desde `/uploads/`.
+- Orden de prueba cobrada por Q38.00: historial diario, correlativo 1, resumen
+  de ventas, método efectivo y producto top comprobados en los reportes.
 
 La revisión visual detectó inicialmente que Nginx entregaba `.js` y `.css` como
 `text/plain`. Se añadió el archivo oficial `mime.types` a `nginx.conf`, se
@@ -836,7 +881,7 @@ datos temporales creados por las pruebas integral y visual se eliminaron al
 finalizar; el contador del día de la prueba visual también se retiró al no tener
 órdenes asociadas.
 
-## Cómo repetir la prueba de las fases 2 y 3
+## Cómo repetir la prueba de las fases 2, 3 y 4
 
 Este procedimiento sirve para repetir la validación en otro momento desde la
 raíz del repositorio.
@@ -870,6 +915,7 @@ raíz del repositorio.
 
    - Tablet: `http://localhost/tablet/`
    - Cocina: `http://localhost/kds/`
+   - Administracion: `http://localhost/admin/`
    - Salud técnica: `http://localhost/api/health`
 
    En tablet, abrir una mesa, agregar uno o varios productos y usar **Enviar a
@@ -878,6 +924,9 @@ raíz del repositorio.
    **Cobrar**, registrar primero un monto menor al saldo con un método y completar
    el resto con el otro. Deben mostrarse el historial, saldo cero, correlativo y
    mesa liberada.
+
+   En administracion, comprobar el catalogo, crear o editar un producto,
+   cargar una imagen, revisar **Ordenes** y consultar **Reportes** y **Usuarios**.
 
 5. Ejecutar la validación automatizada completa por Nginx:
 
@@ -907,6 +956,7 @@ en la etapa de despliegue.
 
 ## Siguiente fase
 
-La fase 4 agregará el panel de administración: catálogo con imágenes, historial
-del día, reportes básicos y gestión de usuarios. Login y aplicación completa de
-roles siguen reservados para la etapa indicada en el plan.
+La fase 5 corresponde a la UI definitiva de la tablet: layout de kiosco, fotos
+en el grid, carrito lateral persistente y modificadores rápidos. La autenticación
+real, autorización por rol y preparación de producción pertenecen a las fases 6
+y 7 del plan.

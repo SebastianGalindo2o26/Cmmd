@@ -1,7 +1,13 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
+import { mkdir, unlink } from 'node:fs/promises';
+import path from 'node:path';
+import multer from 'multer';
+import sharp from 'sharp';
 import { z } from 'zod';
+import { config } from '../config.js';
 import { pool, withTransaction } from '../db/connection.js';
-import { notFound, parseId, validate } from '../http.js';
+import { HttpError, notFound, parseId, validate } from '../http.js';
 
 export const productosRouter = Router();
 
@@ -19,6 +25,29 @@ const selectProductos = `
          p.categoria_id, p.activo, c.nombre AS categoria_nombre
   FROM productos p
   LEFT JOIN categorias c ON c.id = p.categoria_id`;
+
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, callback) => {
+    if (!/^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)) {
+      return callback(new HttpError(400, 'La imagen debe ser JPG, PNG, WebP o GIF'));
+    }
+    callback(null, true);
+  },
+});
+
+function receiveImage(req, res, next) {
+  imageUpload.single('imagen')(req, res, (error) => {
+    if (error) {
+      const message = error.code === 'LIMIT_FILE_SIZE'
+        ? 'La imagen no puede superar 5 MB'
+        : 'La imagen debe ser JPG, PNG, WebP o GIF';
+      return next(new HttpError(400, message));
+    }
+    next();
+  });
+}
 
 productosRouter.get('/', async (req, res) => {
   const conditions = [];
@@ -71,6 +100,48 @@ productosRouter.post('/', async (req, res) => {
   res.status(201).json(row);
 });
 
+productosRouter.post('/:id/imagen', receiveImage, async (req, res) => {
+  const id = parseId(req.params.id, 'producto_id');
+  if (!req.file) throw new HttpError(400, 'Debes enviar un archivo en el campo imagen');
+
+  const existingResult = await pool.query(
+    'SELECT id, imagen_url FROM productos WHERE id = $1',
+    [id],
+  );
+  const existing = existingResult.rows[0];
+  if (!existing) throw notFound('Producto');
+
+  const filename = `producto-${id}-${randomUUID()}.webp`;
+  const absolutePath = path.join(config.uploadDir, filename);
+  await mkdir(config.uploadDir, { recursive: true });
+  await sharp(req.file.buffer)
+    .rotate()
+    .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 82 })
+    .toFile(absolutePath);
+
+  try {
+    const row = await withTransaction(async (client) => {
+      const result = await client.query(
+        `UPDATE productos SET imagen_url = $1
+         WHERE id = $2
+         RETURNING id, nombre, descripcion, precio, imagen_url, categoria_id, activo`,
+        [`/uploads/${filename}`, id],
+      );
+      if (result.rowCount === 0) throw notFound('Producto');
+      return result.rows[0];
+    });
+
+    if (existing.imagen_url?.startsWith('/uploads/')) {
+      await unlink(path.join(config.uploadDir, path.basename(existing.imagen_url))).catch(() => {});
+    }
+    res.json(row);
+  } catch (error) {
+    await unlink(absolutePath).catch(() => {});
+    throw error;
+  }
+});
+
 productosRouter.put('/:id', async (req, res) => {
   const id = parseId(req.params.id);
   const data = validate(productoSchema, req.body);
@@ -110,4 +181,3 @@ productosRouter.delete('/:id', async (req, res) => {
   });
   res.json(row);
 });
-
