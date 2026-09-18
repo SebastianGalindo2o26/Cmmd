@@ -8,6 +8,8 @@ const currency = new Intl.NumberFormat('es-GT', {
   currency: import.meta.env.VITE_CURRENCY || 'GTQ',
 });
 
+const quickNotes = ['Sin cebolla', 'Extra queso', 'Sin picante', 'Para llevar'];
+
 function money(value) {
   return currency.format(Number(value ?? 0));
 }
@@ -17,8 +19,11 @@ function App() {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [categoryId, setCategoryId] = useState(null);
+  const [search, setSearch] = useState('');
   const [order, setOrder] = useState(null);
   const [cart, setCart] = useState([]);
+  const [modifierProduct, setModifierProduct] = useState(null);
+  const [modifierNote, setModifierNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
@@ -95,10 +100,13 @@ function App() {
     },
   });
 
-  const visibleProducts = useMemo(
-    () => products.filter((product) => product.categoria_id === categoryId),
-    [products, categoryId],
-  );
+  const visibleProducts = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return products.filter((product) => (
+      product.categoria_id === categoryId
+      && (!query || `${product.nombre} ${product.descripcion ?? ''}`.toLocaleLowerCase().includes(query))
+    ));
+  }, [products, categoryId, search]);
 
   const cartTotal = useMemo(
     () => cart.reduce((total, item) => total + Number(item.precio) * item.cantidad, 0),
@@ -151,31 +159,56 @@ function App() {
     }
   }
 
-  function addProduct(product) {
+  function addProduct(product, notas = '') {
     if (!order) {
       showMessage('Selecciona una mesa antes de agregar productos.', 'error');
       return;
     }
     setCart((current) => {
-      const existing = current.find((item) => item.producto_id === product.id);
+      const existing = current.find((item) => item.producto_id === product.id && item.notas === notas);
       if (existing) {
-        return current.map((item) => item.producto_id === product.id
+        return current.map((item) => item.producto_id === product.id && item.notas === notas
           ? { ...item, cantidad: item.cantidad + 1 }
           : item);
       }
       return [...current, {
+        lineId: `${product.id}-${Date.now()}-${Math.random()}`,
         producto_id: product.id,
         nombre: product.nombre,
         precio: product.precio,
         cantidad: 1,
-        notas: '',
+        notas,
       }];
     });
   }
 
-  function updateCartItem(productId, changes) {
+  function openProduct(product) {
+    if (!order) {
+      showMessage('Selecciona una mesa antes de agregar productos.', 'error');
+      return;
+    }
+    setModifierProduct(product);
+    setModifierNote('');
+  }
+
+  function confirmProduct() {
+    if (!modifierProduct) return;
+    addProduct(modifierProduct, notesOrNull(modifierNote) ?? '');
+    setModifierProduct(null);
+    setModifierNote('');
+  }
+
+  function addQuickNote(lineId, note) {
+    setCart((current) => current.map((item) => {
+      if (item.lineId !== lineId) return item;
+      const notes = item.notas ? `${item.notas}, ${note}` : note;
+      return { ...item, notas: notes.slice(0, 500) };
+    }));
+  }
+
+  function updateCartItem(lineId, changes) {
     setCart((current) => current
-      .map((item) => item.producto_id === productId ? { ...item, ...changes } : item)
+      .map((item) => item.lineId === lineId ? { ...item, ...changes } : item)
       .filter((item) => item.cantidad > 0));
   }
 
@@ -273,6 +306,7 @@ function App() {
         <div>
           <p className="eyebrow">POS · MESERO</p>
           <h1>{order ? `Mesa ${order.mesa_numero}` : 'Selecciona una mesa'}</h1>
+          <p className="topbar-subtitle">Toca un producto para agregarlo a la ronda actual</p>
         </div>
         <div className="topbar-actions">
           <label className="user-field">
@@ -316,6 +350,7 @@ function App() {
         </div>
       )}
 
+      {!order && <section className="table-picker-heading"><div><p className="eyebrow">INICIO RÁPIDO</p><h2>Elige una mesa para comenzar</h2></div><span>{tables.filter((table) => table.estado === 'libre').length} libres</span></section>}
       <section className="tables-strip" aria-label="Mesas">
         {loading && <p>Cargando mesas…</p>}
         {!loading && !tables.length && <p>No hay mesas. Créelas desde la API antes de comenzar.</p>}
@@ -347,24 +382,29 @@ function App() {
         </nav>
 
         <section className="products">
-          <div className="section-heading">
+          <div className="section-heading product-heading">
             <div>
               <p className="eyebrow">MENÚ</p>
               <h2>{categories.find((item) => item.id === categoryId)?.nombre ?? 'Productos'}</h2>
             </div>
-            <span>{visibleProducts.length} productos</span>
+            <div className="search-field">
+              <span className="sr-only">Buscar producto</span>
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar producto" />
+              {search && <button type="button" onClick={() => setSearch('')} aria-label="Limpiar búsqueda">×</button>}
+            </div>
           </div>
           <div className="product-grid">
             {visibleProducts.map((product) => (
-              <button key={product.id} className="product-card" onClick={() => addProduct(product)}>
+              <button key={product.id} className="product-card" onClick={() => openProduct(product)} aria-label={`Agregar ${product.nombre}`}>
                 {product.imagen_url
-                  ? <img src={product.imagen_url} alt="" />
+                  ? <img src={product.imagen_url} alt="" loading="lazy" />
                   : <span className="product-placeholder">{product.nombre.slice(0, 1)}</span>}
                 <strong>{product.nombre}</strong>
+                {product.descripcion && <small>{product.descripcion}</small>}
                 <span>{money(product.precio)}</span>
               </button>
             ))}
-            {!visibleProducts.length && <p className="empty">No hay productos activos en esta categoría.</p>}
+            {!visibleProducts.length && <p className="empty">No hay productos que coincidan con la búsqueda.</p>}
           </div>
         </section>
 
@@ -389,22 +429,25 @@ function App() {
             ))}
 
             {cart.map((item) => (
-              <article className="cart-item" key={item.producto_id}>
+              <article className="cart-item" key={item.lineId}>
                 <div className="cart-line">
                   <strong>{item.nombre}</strong>
                   <span>{money(Number(item.precio) * item.cantidad)}</span>
                 </div>
                 <div className="quantity">
-                  <button onClick={() => updateCartItem(item.producto_id, { cantidad: item.cantidad - 1 })}>−</button>
+                  <button type="button" onClick={() => updateCartItem(item.lineId, { cantidad: item.cantidad - 1 })}>−</button>
                   <span>{item.cantidad}</span>
-                  <button onClick={() => updateCartItem(item.producto_id, { cantidad: item.cantidad + 1 })}>+</button>
+                  <button type="button" onClick={() => updateCartItem(item.lineId, { cantidad: item.cantidad + 1 })}>+</button>
                 </div>
                 <input
                   value={item.notas}
                   maxLength="500"
                   placeholder="Nota para cocina"
-                  onChange={(event) => updateCartItem(item.producto_id, { notas: event.target.value })}
+                  onChange={(event) => updateCartItem(item.lineId, { notas: event.target.value })}
                 />
+                <div className="quick-notes" aria-label="Modificadores rápidos">
+                  {quickNotes.map((note) => <button type="button" key={note} onClick={() => addQuickNote(item.lineId, note)}>{note}</button>)}
+                </div>
               </article>
             ))}
 
@@ -455,6 +498,25 @@ function App() {
           onClose={() => setPaymentOpen(false)}
           onPay={registerPayment}
         />
+      )}
+
+      {modifierProduct && (
+        <div className="dialog-backdrop" role="presentation">
+          <section className="modifier-dialog" role="dialog" aria-modal="true" aria-labelledby="modifier-title">
+            <header className="dialog-header">
+              <div><p className="eyebrow">NUEVA LÍNEA</p><h2 id="modifier-title">{modifierProduct.nombre}</h2></div>
+              <button className="icon-button" aria-label="Cerrar producto" onClick={() => setModifierProduct(null)}>×</button>
+            </header>
+            <div className="modifier-content">
+              <p className="modifier-help">Elige un atajo o escribe una nota para cocina.</p>
+              <div className="modifier-options">
+                {quickNotes.map((note) => <button type="button" key={note} onClick={() => setModifierNote((current) => current ? `${current}, ${note}` : note)}>{note}</button>)}
+              </div>
+              <label className="modifier-input">Nota personalizada<textarea rows="3" maxLength="500" value={modifierNote} onChange={(event) => setModifierNote(event.target.value)} placeholder="Ej. salsa aparte" /></label>
+              <div className="dialog-actions"><button type="button" className="secondary" onClick={() => setModifierProduct(null)}>Cancelar</button><button type="button" className="primary" onClick={confirmProduct}>Agregar · {money(modifierProduct.precio)}</button></div>
+            </div>
+          </section>
+        </div>
       )}
 
       {receipt && (

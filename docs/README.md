@@ -57,7 +57,6 @@ Pendiente después de las fases implementadas:
 
 - CRUD de modificadores.
 - Autenticación, contraseñas con hash y autorización efectiva por rol.
-- Diseño visual definitivo de tablet/cocina.
 
 La API de fase 1 cubre el flujo completo: catálogo → mesa → orden → rondas de
 cocina → estados → uno o varios pagos → correlativo y cierre. El código de fase
@@ -125,6 +124,27 @@ El panel usa la misma API y el mismo proxy de Nginx que tablet y cocina. La
 gestion de usuarios es administrativa, pero todavia no autentica sesiones ni
 protege rutas por rol; autenticacion, contrasenas con hash y autorizacion quedan
 para la fase de endurecimiento indicada en el plan.
+
+### Fase 5 - completada localmente
+
+La tablet ahora usa una interfaz tipo kiosco optimizada para operación táctil:
+
+- Selector de mesa destacado antes de comenzar una orden y encabezado compacto
+  con estado de conexión y acciones de cobro.
+- Grid de productos con imágenes WebP, descripción, precio y objetivos táctiles
+  grandes; la imagen se carga de forma diferida.
+- Búsqueda rápida dentro de la categoría activa para localizar productos sin
+  navegar entre pantallas.
+- Carrito lateral siempre visible con líneas separadas, cantidades, notas y
+  accesos de un toque para `Sin cebolla`, `Extra queso`, `Sin picante` y
+  `Para llevar`.
+- Popup de modificadores rápidos al agregar un producto; sus selecciones se
+  envían como notas de cocina sin cambiar el precio del producto.
+- Diseño responsive para tablet horizontal y pantallas estrechas, manteniendo
+  el flujo existente de enviar a cocina y cobrar.
+
+Los atajos de esta fase son notas operativas. Los modificadores con precio extra
+y su CRUD de catálogo siguen reservados para una fase posterior.
 
 ## Arquitectura actual
 
@@ -231,7 +251,7 @@ proyectos. Puede migrarse a TypeScript si el sistema crece.
 │   ├── test/                     Pruebas unitarias
 │   ├── uploads/                  Imágenes WebP optimizadas (persistencia local)
 │   └── Dockerfile
-├── tablet-app/                   Prototipo React para el mesero
+├── tablet-app/                   Tablet React tipo kiosco para el mesero
 ├── kds-display/                  Prototipo Alpine.js para cocina
 ├── admin-panel/                  Panel React de administración
 ├── shared/types.js               Contratos de datos compartidos
@@ -805,7 +825,7 @@ el acceso por la red autorizada.
 
 ## Pruebas realizadas
 
-La entrega actual fue verificada por última vez el 17 de septiembre de 2026 de
+La entrega actual fue verificada por última vez el 18 de septiembre de 2026 de
 las siguientes maneras:
 
 - Instalación y auditoría de las dependencias npm sin vulnerabilidades reportadas
@@ -847,6 +867,9 @@ las siguientes maneras:
   desde `/uploads/`.
 - Orden de prueba cobrada por Q38.00: historial diario, correlativo 1, resumen
   de ventas, método efectivo y producto top comprobados en los reportes.
+- Validación de fase 5: build de tablet con la búsqueda, selector de mesa,
+  imágenes diferidas y popup de notas rápidas incluidos en el bundle servido
+  por Nginx; los tres frontends recompilaron correctamente con Compose.
 
 La revisión visual detectó inicialmente que Nginx entregaba `.js` y `.css` como
 `text/plain`. Se añadió el archivo oficial `mime.types` a `nginx.conf`, se
@@ -956,7 +979,7 @@ en la etapa de despliegue.
 
 ## Siguiente fase
 
-La fase 5 corresponde a la UI definitiva de la tablet: layout de kiosco, fotos
-en el grid, carrito lateral persistente y modificadores rápidos. La autenticación
-real, autorización por rol y preparación de producción pertenecen a las fases 6
-y 7 del plan.
+La fase 6 corresponde a resiliencia y producción: cola offline con IndexedDB,
+reinicio automático, autoarranque, autenticación y roles, manejo de errores
+concurrentes y preparación de la mini PC. El despliegue de red, Tailscale,
+respaldos y operación real pertenece a la fase 7.
