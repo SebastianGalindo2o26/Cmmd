@@ -22,7 +22,7 @@ const emptyProduct = () => ({
 });
 
 const emptyCategory = () => ({ nombre: '', imagen_url: '', orden: 0 });
-const emptyUser = () => ({ nombre: '', usuario: '', rol: 'mesero', activo: true });
+const emptyUser = () => ({ nombre: '', usuario: '', rol: 'mesero', activo: true, password: '' });
 
 function money(value) {
   return currency.format(Number(value ?? 0));
@@ -53,6 +53,11 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [loginForm, setLoginForm] = useState({ usuario: '', password: '' });
+  const [session, setSession] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('pos_auth_user') ?? 'null'); } catch { return null; }
+  });
 
   const visibleProducts = useMemo(() => products.filter((product) => (
     categoryFilter === 'all' || String(product.categoria_id) === categoryFilter
@@ -63,6 +68,11 @@ function App() {
   }
 
   function handleError(error) {
+    if (error.status === 401) {
+      setLoginOpen(true);
+      showMessage('Esta sección requiere iniciar sesión.', 'info');
+      return;
+    }
     showMessage(error.message ?? 'Ocurrió un error', 'error');
   }
 
@@ -73,6 +83,34 @@ function App() {
     ]);
     setCategories(categoryData);
     setProducts(productData);
+  }
+
+  async function login(event) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const result = await api('/auth/login', { method: 'POST', body: JSON.stringify(loginForm) });
+      localStorage.setItem('pos_auth_token', result.token);
+      localStorage.setItem('pos_auth_user', JSON.stringify(result.usuario));
+      setSession(result.usuario);
+      setLoginOpen(false);
+      setLoginForm({ usuario: '', password: '' });
+      showMessage(`Sesión iniciada como ${result.usuario.usuario}.`);
+      if (tab === 'usuarios') await loadUsers();
+      if (tab === 'reportes') await loadReport();
+    } catch (error) {
+      showMessage(error.message ?? 'No se pudo iniciar sesión', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem('pos_auth_token');
+    localStorage.removeItem('pos_auth_user');
+    setSession(null);
+    setLoginOpen(false);
+    showMessage('Sesión cerrada.');
   }
 
   async function loadUsers() {
@@ -226,16 +264,22 @@ function App() {
 
   function editUser(user) {
     setEditingUser(user.id);
-    setUserForm({ nombre: user.nombre, usuario: user.usuario, rol: user.rol, activo: user.activo });
+    setUserForm({ nombre: user.nombre, usuario: user.usuario, rol: user.rol, activo: user.activo, password: '' });
   }
 
   async function saveUser(event) {
     event.preventDefault();
     setBusy(true);
     try {
+      const payload = { ...userForm };
+      if (!payload.password) delete payload.password;
+      if (!editingUser && !payload.password) {
+        const password = window.prompt('Contraseña inicial (mínimo 8 caracteres):');
+        if (password) payload.password = password;
+      }
       await api(editingUser ? `/usuarios/${editingUser}` : '/usuarios', {
         method: editingUser ? 'PUT' : 'POST',
-        body: JSON.stringify(userForm),
+        body: JSON.stringify(payload),
       });
       setEditingUser(null);
       setUserForm(emptyUser());
@@ -276,7 +320,9 @@ function App() {
         </div>
         <div className="header-actions">
           <span className="status-pill"><span className="status-dot" /> Entorno local</span>
+          {session && <span className="session-pill">{session.usuario}</span>}
           <button className="ghost-button" onClick={refresh} disabled={loading}>Actualizar</button>
+          {session ? <button className="ghost-button" onClick={logout}>Salir</button> : <button className="ghost-button" onClick={() => setLoginOpen(true)}>Acceder</button>}
         </div>
       </header>
 
@@ -309,6 +355,18 @@ function App() {
       {tab === 'reportes' && <section className="reports-layout"><div className="panel report-toolbar"><div><p className="eyebrow">ANÁLISIS</p><h2>Ventas del día</h2></div><label className="date-control">Fecha<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label></div>{report && <><div className="summary-grid"><div className="metric-card"><span>Ventas</span><strong>{money(report.resumen.ventas)}</strong><small>{report.resumen.ordenes} órdenes</small></div><div className="metric-card"><span>Total cobrado</span><strong>{money(report.resumen.cobrado)}</strong><small>Pagos registrados</small></div>{report.por_metodo.map((method) => <div className="metric-card" key={method.metodo}><span>{method.metodo === 'efectivo' ? 'Efectivo' : 'Tarjeta'}</span><strong>{money(method.total)}</strong><small>{method.pagos} pagos</small></div>)}</div><div className="report-columns"><section className="panel data-panel"><div className="panel-heading"><div><p className="eyebrow">PRODUCTIVIDAD</p><h2>Productos más vendidos</h2></div></div><div className="ranking-list">{report.productos_top.map((product, index) => <div className="ranking-row" key={product.id}><b>{index + 1}</b><div><strong>{product.nombre}</strong><small>{product.categoria_nombre ?? 'Sin categoría'} · {product.cantidad} unidades</small></div><strong>{money(product.total)}</strong></div>)}{!report.productos_top.length && <p className="empty-state">No hay ventas para esta fecha.</p>}</div></section><section className="panel data-panel"><div className="panel-heading"><div><p className="eyebrow">MÉTODOS</p><h2>Distribución de cobros</h2></div></div><div className="method-list">{report.por_metodo.map((method) => <div className="method-row" key={method.metodo}><div><strong>{method.metodo === 'efectivo' ? 'Efectivo' : 'Tarjeta'}</strong><small>{method.pagos} operaciones</small></div><strong>{money(method.total)}</strong></div>)}{!report.por_metodo.length && <p className="empty-state">No hay pagos para esta fecha.</p>}</div></section></div></>}</section>}
 
       {tab === 'usuarios' && <section className="users-layout"><section className="panel data-panel"><div className="panel-heading"><div><p className="eyebrow">ACCESOS</p><h2>Usuarios y roles</h2></div><span>{users.length} registros</span></div><div className="user-list">{users.map((user) => <div className={!user.activo ? 'user-row inactive' : 'user-row'} key={user.id}><div className="avatar">{user.nombre.slice(0, 1).toUpperCase()}</div><div className="user-copy"><strong>{user.nombre}</strong><small>@{user.usuario}</small></div><span className="role-badge">{roles.find(([value]) => value === user.rol)?.[1] ?? user.rol}</span><span className={user.activo ? 'active-label' : 'inactive-label'}>{user.activo ? 'Activo' : 'Inactivo'}</span><button className="secondary-button" onClick={() => editUser(user)}>Editar</button>{user.activo && <button className="link-button" onClick={() => deactivateUser(user)}>Desactivar</button>}</div>)}{!users.length && <p className="empty-state">No hay usuarios.</p>}</div></section><form className="panel user-form" onSubmit={saveUser}><div className="panel-heading"><div><p className="eyebrow">{editingUser ? 'EDICIÓN' : 'NUEVO REGISTRO'}</p><h2>{editingUser ? 'Editar usuario' : 'Agregar usuario'}</h2></div></div><p className="form-note">La contraseña y autenticación se habilitarán en la etapa de producción. Por ahora se administran identidad, rol y estado.</p><label>Nombre<input required value={userForm.nombre} onChange={(event) => setUserForm({ ...userForm, nombre: event.target.value })} /></label><label>Usuario<input required value={userForm.usuario} onChange={(event) => setUserForm({ ...userForm, usuario: event.target.value })} /></label><label>Rol<select value={userForm.rol} onChange={(event) => setUserForm({ ...userForm, rol: event.target.value })}>{roles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="check-field"><input type="checkbox" checked={userForm.activo} onChange={(event) => setUserForm({ ...userForm, activo: event.target.checked })} /> Usuario activo</label><div className="form-actions"><button type="button" className="secondary-button" onClick={() => { setEditingUser(null); setUserForm(emptyUser()); }}>Limpiar</button><button className="primary" disabled={busy}>{busy ? 'Guardando…' : 'Guardar usuario'}</button></div></form></section>}
+      {loginOpen && (
+        <div className="admin-login-backdrop" role="presentation">
+          <form className="admin-login-dialog" onSubmit={login}>
+            <p className="eyebrow">ACCESO ADMINISTRATIVO</p>
+            <h2>Iniciar sesión</h2>
+            <p>Reportes y usuarios requieren una cuenta cuando AUTH_REQUIRED está activo.</p>
+            <label>Usuario<input required autoFocus value={loginForm.usuario} onChange={(event) => setLoginForm({ ...loginForm, usuario: event.target.value })} /></label>
+            <label>Contraseña<input required type="password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} /></label>
+            <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setLoginOpen(false)}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Entrando…' : 'Entrar'}</button></div>
+          </form>
+        </div>
+      )}
     </main>
   );
 }

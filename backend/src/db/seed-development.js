@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { hashPassword } from '../auth.js';
 import { pool, withTransaction } from './connection.js';
 
 const sampleProducts = [
@@ -16,15 +17,18 @@ async function seedDevelopment() {
     throw new Error('El seed de desarrollo no puede ejecutarse con NODE_ENV=production');
   }
 
+  const demoPasswordHash = await hashPassword('demo1234');
   const result = await withTransaction(async (client) => {
     const userResult = await client.query(
       `INSERT INTO usuarios (nombre, usuario, password_hash, rol)
-       VALUES ('Mesero de prueba', 'mesero_demo', 'AUTH_PENDING', 'mesero')
+       VALUES ('Mesero de prueba', 'mesero_demo', $1, 'mesero')
        ON CONFLICT (usuario) DO UPDATE SET
          nombre = EXCLUDED.nombre,
+         password_hash = EXCLUDED.password_hash,
          rol = EXCLUDED.rol,
          activo = true
        RETURNING id, nombre, usuario, rol, activo`,
+      [demoPasswordHash],
     );
 
     const categoryIds = new Map();

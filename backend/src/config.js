@@ -27,10 +27,30 @@ function readTimezone() {
   return timezone;
 }
 
+function readBoolean(name, fallback = false) {
+  const value = process.env[name];
+  if (value === undefined) return fallback;
+  if (!['true', 'false'].includes(value.toLowerCase())) {
+    throw new Error(`${name} debe ser true o false`);
+  }
+  return value.toLowerCase() === 'true';
+}
+
+function readAuthSecret(nodeEnv) {
+  const secret = process.env.AUTH_SECRET ?? (nodeEnv === 'production' ? '' : 'dev-only-change-auth-secret');
+  if (nodeEnv === 'production' && secret.length < 32) {
+    throw new Error('AUTH_SECRET debe tener al menos 32 caracteres en producción');
+  }
+  return secret;
+}
+
+const nodeEnv = process.env.NODE_ENV ?? 'development';
 export const config = Object.freeze({
   databaseUrl: required('DATABASE_URL'),
-  nodeEnv: process.env.NODE_ENV ?? 'development',
+  nodeEnv,
   port: readPort(),
   restaurantTimezone: readTimezone(),
   uploadDir: path.resolve(process.cwd(), process.env.UPLOAD_DIR ?? 'uploads'),
+  authRequired: readBoolean('AUTH_REQUIRED'),
+  authSecret: readAuthSecret(nodeEnv),
 });

@@ -9,13 +9,16 @@ general, las fases y las reglas de negocio se encuentran en
 Este documento describe el estado real del repositorio: qué está implementado,
 cómo funciona, por qué se construyó de esta manera, cómo ejecutarlo y qué falta.
 
+Para instalarlo en otra computadora y hacer una prueba desde la red local,
+seguir [`manual-despliegue-pruebas.md`](manual-despliegue-pruebas.md).
+
 ## Estado actual
 
 ### Fase 0 — completada
 
 | Entregable | Estado | Motivo |
 |---|---|---|
-| Repositorio Git | Listo | Las fases 0, 1, 2 y 3 tienen commits; los cambios de fase 4 quedan visibles por separado hasta su commit. |
+| Repositorio Git | Listo | Las fases 0 a 5 tienen commits; los cambios posteriores quedan visibles por separado hasta su commit. |
 | Monorepo | Listo | Backend, aplicaciones y archivos de infraestructura evolucionarán juntos y compartirán contratos. |
 | Entorno Node.js | Listo | El backend usa Node.js 22 o superior y npm workspaces. |
 | Docker y PostgreSQL | Listo | Reproduce el mismo entorno en desarrollo y en la futura mini PC del restaurante. |
@@ -56,7 +59,8 @@ Ya está implementado:
 Pendiente después de las fases implementadas:
 
 - CRUD de modificadores.
-- Autenticación, contraseñas con hash y autorización efectiva por rol.
+- Cierre de autenticación para todos los clientes operativos; la fase 6 ya
+  incluye el núcleo de credenciales y la protección administrativa opcional.
 
 La API de fase 1 cubre el flujo completo: catálogo → mesa → orden → rondas de
 cocina → estados → uno o varios pagos → correlativo y cierre. El código de fase
@@ -71,7 +75,7 @@ Ya se crearon los dos prototipos:
 - Reconexión e hidratación de estado desde la API.
 - Nginx sirve `/tablet/` y `/kds/` en el puerto 80 y actúa como proxy de la API
   y Socket.io.
-- Imagen Docker multi-stage para compilar ambos frontends.
+- Imagen Docker multi-stage para compilar tablet, KDS y administración.
 - Seed de desarrollo con mesero, ocho mesas, cuatro categorías y siete productos.
 - Dependencias instaladas y registradas en `package-lock.json`.
 - Compilaciones de producción de tablet y KDS aprobadas.
@@ -120,10 +124,10 @@ Incluye:
 - Reporte diario con ventas cobradas, metodos de pago y productos mas vendidos.
 - CRUD de usuarios con roles `mesero`, `cocina`, `cajero` y `admin`.
 
-El panel usa la misma API y el mismo proxy de Nginx que tablet y cocina. La
-gestion de usuarios es administrativa, pero todavia no autentica sesiones ni
-protege rutas por rol; autenticacion, contrasenas con hash y autorizacion quedan
-para la fase de endurecimiento indicada en el plan.
+El panel usa la misma API y el mismo proxy de Nginx que tablet y cocina. Con
+`AUTH_REQUIRED=true`, el login administrativo protege reportes y usuarios por
+rol; el resto de la autenticación operativa queda pendiente para el cierre de
+la fase 6.
 
 ### Fase 5 - completada localmente
 
@@ -146,6 +150,29 @@ La tablet ahora usa una interfaz tipo kiosco optimizada para operación táctil:
 Los atajos de esta fase son notas operativas. Los modificadores con precio extra
 y su CRUD de catálogo siguen reservados para una fase posterior.
 
+### Fase 6 - avance local de resiliencia
+
+Ya está implementada y probada la primera parte de resiliencia:
+
+- Cola de operaciones en IndexedDB (con fallback a `localStorage`) para rondas
+  que no pudieron enviarse por pérdida de red.
+- Reintento automático al recuperar conexión y estado visible de operaciones
+  pendientes en la tablet.
+- Service worker que conserva la interfaz y las lecturas básicas del catálogo
+  para abrir la tablet sin conexión.
+- Claves `Idempotency-Key` en agregar ítems y enviar a cocina; reintentar una
+  petición no duplica ítems ni rondas.
+- Migración `002_idempotency.sql` y validación real con Compose/PostgreSQL.
+- Autenticación opcional con tokens firmados, hash de contraseñas `scrypt`,
+  login administrativo y protección de usuarios/reportes cuando
+  `AUTH_REQUIRED=true`.
+- `restart: unless-stopped` en los tres servicios y secreto de autenticación
+  obligatorio en modo `production`.
+
+La fase 6 aún no está cerrada para producción: falta propagar autenticación a
+las operaciones de tablet y KDS, configurar autoarranque de la mini PC y probar
+la recuperación real de una caída de red y de un respaldo.
+
 ## Arquitectura actual
 
 ```text
@@ -156,13 +183,15 @@ KDS /kds/ ────────┼──► Nginx :80 ──► /api + /socke
                                                         PostgreSQL :5432
 ```
 
-El Compose define tres servicios:
+El Compose define tres servicios permanentes y un perfil opcional de respaldo:
 
 - `postgres`: almacena la información en el volumen persistente `pgdata`.
 - `backend`: ejecuta primero las migraciones y después inicia Express y
   Socket.io sobre el mismo puerto.
 - `web`: compila los tres frontends y usa Nginx para servirlos y dirigir las
   solicitudes `/api` y `/socket.io` al backend.
+- `backup` (perfil `backup`): ejecuta `pg_dump`, guarda archivos `.dump` en
+  `BACKUP_DIR` y elimina archivos más antiguos que `BACKUP_RETENTION_DAYS`.
 
 La ruta `/admin/` sirve el panel de administración y comparte el proxy `/api`
 con tablet y cocina.
@@ -259,7 +288,8 @@ proyectos. Puede migrarse a TypeScript si el sistema crece.
 │   ├── docker-compose.yml        PostgreSQL, backend y servidor web
 │   ├── Dockerfile                Compilación multi-stage de frontends
 │   ├── nginx.conf                Archivos estáticos, API y Socket.io
-│   └── backup/                   Base del futuro respaldo de PostgreSQL
+│   ├── pos-restaurante.service   Arranque de Compose con systemd
+│   └── backup/                   Respaldo manual reproducible de PostgreSQL
 ├── docs/
 │   ├── README.md                 Este documento
 │   └── modelo-datos.md           Diagrama entidad-relación
@@ -369,8 +399,8 @@ El arranque sigue este orden:
 2. El healthcheck espera que PostgreSQL acepte conexiones.
 3. El backend ejecuta `npm run migrate`.
 4. El backend inicia en `0.0.0.0:3000`.
-5. La imagen web compila tablet y KDS.
-6. Nginx comienza a servir ambos prototipos en el puerto 80.
+5. La imagen web compila tablet, KDS y administración.
+6. Nginx comienza a servir las tres interfaces en el puerto 80.
 
 Para crear el usuario local usado durante el desarrollo de la interfaz:
 
@@ -381,8 +411,7 @@ docker compose --env-file .env -f infra/docker-compose.yml exec `
 
 El seed crea o reutiliza `mesero_demo`, además de ocho mesas, cuatro categorías
 y siete productos de muestra. Imprime el `id` que la tablet debe usar como
-`usuario_id`. No crea una contraseña utilizable porque la autenticación
-pertenece a una fase posterior.
+`usuario_id` y deja la contraseña de desarrollo `demo1234` para probar el login.
 
 Direcciones locales:
 
@@ -391,6 +420,7 @@ Direcciones locales:
 - PostgreSQL: `localhost:5432`
 - Tablet: `http://localhost/tablet/`
 - Cocina: `http://localhost/kds/`
+- Administración: `http://localhost/admin/`
 
 Para ejecutar en segundo plano:
 
@@ -545,9 +575,23 @@ metadatos, se reduce sin ampliar y se convierte a WebP antes de guardarse en
 | `PUT` | `/api/usuarios/:id` | Actualiza nombre, usuario, rol y estado. |
 | `DELETE` | `/api/usuarios/:id` | Desactiva el usuario sin borrar su registro. |
 
-El panel web consume estas rutas desde `/admin/`. Los usuarios de esta fase aún
-no son credenciales de inicio de sesión: el campo de contraseña permanece
-reservado hasta implementar autenticación y autorización por rol.
+| `POST` | `/api/auth/login` | Entrega un token firmado para un usuario activo. |
+| `GET` | `/api/auth/me` | Devuelve la sesión asociada al token Bearer. |
+
+El panel web consume estas rutas desde `/admin/`. En desarrollo la protección
+administrativa es opcional (`AUTH_REQUIRED=false`); al activarla, reportes exige
+rol `cajero` o `admin` y la gestión de usuarios exige rol `admin`. El token se
+envía en `Authorization: Bearer ...` y nunca se devuelve el hash de contraseña.
+
+Variables relacionadas:
+
+| Variable | Uso |
+|---|---|
+| `UPLOAD_DIR` | Directorio de imágenes; en Compose debe mantenerse dentro del volumen `uploads`. |
+| `AUTH_REQUIRED` | `true` activa la protección administrativa por token. |
+| `AUTH_SECRET` | Secreto de firma; en producción debe tener al menos 32 caracteres y no reutilizar el valor de ejemplo. |
+| `BACKUP_DIR` | Carpeta del host donde el perfil `backup` escribe los dumps. |
+| `BACKUP_RETENTION_DAYS` | Días de retención de dumps; por defecto `14`. |
 
 ### Mesas
 
@@ -809,11 +853,12 @@ Invoke-RestMethod -Method Post `
 - Express oculta el encabezado `X-Powered-By`.
 - El cuerpo JSON está limitado a 1 MB.
 - CORS está abierto mientras se desarrollan clientes en distintos puertos.
-- No existe autenticación ni autorización todavía.
+- La autenticación administrativa se activa con `AUTH_REQUIRED=true`; tablet y
+  KDS todavía deben propagar el token de operador para cerrar esta fase.
 - `usuario_id` y el tipo de sala Socket.io se confían durante el desarrollo;
   todavía no representan una frontera de seguridad.
 - Los endpoints administrativos no deben exponerse fuera de una red de
-  desarrollo hasta implementar usuarios y roles.
+  confianza mientras `AUTH_REQUIRED` permanezca desactivado.
 - No se deben utilizar las credenciales de ejemplo en producción.
 - Nginx está construido y probado localmente; todavía debe limitarse su acceso
   antes de exponerlo fuera de la red autorizada.
@@ -979,7 +1024,6 @@ en la etapa de despliegue.
 
 ## Siguiente fase
 
-La fase 6 corresponde a resiliencia y producción: cola offline con IndexedDB,
-reinicio automático, autoarranque, autenticación y roles, manejo de errores
-concurrentes y preparación de la mini PC. El despliegue de red, Tailscale,
-respaldos y operación real pertenece a la fase 7.
+La fase 6 continúa con el cierre de autenticación para tablet/KDS, pruebas de
+recuperación y autoarranque. Después seguirá la fase 7: mini PC, Tailscale,
+respaldos, operación en red real y capacitación.

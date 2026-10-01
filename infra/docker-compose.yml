@@ -29,6 +29,9 @@ services:
       NODE_ENV: production
       PORT: 3000
       RESTAURANT_TIMEZONE: ${RESTAURANT_TIMEZONE:-America/Guatemala}
+      UPLOAD_DIR: ${UPLOAD_DIR:-uploads}
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-false}
+      AUTH_SECRET: ${AUTH_SECRET:-dev-only-change-this-secret-please-replace-1234}
     ports:
       - "3000:3000"
     volumes:
@@ -49,6 +52,21 @@ services:
         condition: service_healthy
     ports:
       - "80:80"
+
+  backup:
+    image: postgres:16-alpine
+    profiles: ["backup"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-pos_user}:${POSTGRES_PASSWORD:-change-this-password}@postgres:5432/${POSTGRES_DB:-pos_db}
+      BACKUP_DIRECTORY: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ${BACKUP_DIR:-./backup/archives}:/backups
+      - ./backup/backup-postgres.sh:/usr/local/bin/backup-postgres.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/backup-postgres.sh"]
 
 volumes:
   pgdata:

@@ -7,4 +7,5 @@ coverage/
 Thumbs.db
 backend/uploads/*
 !backend/uploads/.gitkeep
-
+infra/backup/archives/*
+!infra/backup/archives/.gitkeep

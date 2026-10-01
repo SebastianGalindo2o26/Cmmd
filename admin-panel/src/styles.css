@@ -18,6 +18,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .header-subtitle { margin: 0; color: #cad3cd; }
 .header-actions { display: flex; align-items: center; gap: 10px; }
 .status-pill { display: inline-flex; align-items: center; gap: 7px; padding: 9px 12px; border-radius: 999px; color: #bff1cc; background: #244f34; font-size: .8rem; font-weight: 800; }
+.session-pill { padding: 9px 12px; border-radius: 999px; color: #fff0cf; background: #604823; font-size: .78rem; font-weight: 800; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #55d979; }
 .ghost-button, .secondary-button { border: 1px solid #d9d5ca; border-radius: 10px; padding: 10px 13px; color: #243228; background: #fff; font-weight: 750; }
 .ghost-button { border-color: #55645a; color: #fff; background: transparent; }
@@ -25,6 +26,12 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .notice { display: flex; justify-content: space-between; gap: 15px; margin: 14px 0; padding: 13px 16px; border-radius: 12px; }
 .notice.success { color: #174f29; background: #ddf1e2; }
 .notice.error { color: #7b2d21; background: #f9ded9; }
+.admin-login-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgb(10 17 13 / 72%); backdrop-filter: blur(5px); }
+.admin-login-dialog { width: min(430px, 100%); padding: 28px; border-radius: 22px; background: #fffdf8; box-shadow: 0 24px 70px rgb(0 0 0 / 30%); }
+.admin-login-dialog h2 { margin: 5px 0 8px; }
+.admin-login-dialog p:not(.eyebrow) { color: #687269; }
+.admin-login-dialog label { display: block; margin-top: 16px; font-weight: 700; }
+.admin-login-dialog input { display: block; width: 100%; margin-top: 6px; padding: 11px 12px; border: 1px solid #d8d3c7; border-radius: 10px; }
 .notice button { border: 0; color: inherit; background: transparent; font-size: 1.25rem; }
 .admin-nav { display: flex; gap: 8px; margin: 18px 0; padding: 6px; border: 1px solid #dfdcd3; border-radius: 15px; background: #fff; overflow-x: auto; }
 .admin-nav button { border: 0; border-radius: 10px; padding: 12px 20px; color: #6c766f; background: transparent; font-weight: 850; white-space: nowrap; }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from './api.js';
 import { PaymentDialog, PaymentReceipt } from './components/PaymentDialog.jsx';
 import { useSocket } from './hooks/useSocket.js';
+import { enqueue, listPending, pendingCount, removePending } from './offlineQueue.js';
 
 const currency = new Intl.NumberFormat('es-GT', {
   style: 'currency',
@@ -12,6 +13,15 @@ const quickNotes = ['Sin cebolla', 'Extra queso', 'Sin picante', 'Para llevar'];
 
 function money(value) {
   return currency.format(Number(value ?? 0));
+}
+
+function operationKey() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `tablet-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function isNetworkError(error) {
+  return !navigator.onLine || error?.name === 'TypeError' || error?.message === 'Failed to fetch';
 }
 
 function App() {
@@ -26,6 +36,9 @@ function App() {
   const [modifierNote, setModifierNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [online, setOnline] = useState(() => navigator.onLine);
+  const [pendingSync, setPendingSync] = useState(0);
+  const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [receipt, setReceipt] = useState(null);
@@ -63,6 +76,21 @@ function App() {
 
   useEffect(() => {
     loadInitial();
+    pendingCount().then(setPendingSync).catch(() => {});
+    function handleOnline() {
+      setOnline(true);
+      flushOfflineQueue();
+    }
+    function handleOffline() {
+      setOnline(false);
+      showMessage('Sin conexión. Las nuevas rondas se guardarán para sincronizarse.', 'info');
+    }
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   const connected = useSocket({
@@ -114,6 +142,40 @@ function App() {
   );
 
   const hasUnsentItems = order?.items?.some((item) => !item.enviado_cocina_at) ?? false;
+
+  async function flushOfflineQueue() {
+    if (!navigator.onLine || syncing) return;
+    setSyncing(true);
+    try {
+      const pending = await listPending();
+      let completed = 0;
+      for (const operation of pending) {
+        try {
+          await api(operation.path, {
+            method: operation.method,
+            ...(operation.body ? { body: JSON.stringify(operation.body) } : {}),
+            headers: { 'Idempotency-Key': operation.key },
+          });
+          await removePending(operation.id);
+          completed += 1;
+        } catch (error) {
+          if (!isNetworkError(error)) {
+            showMessage(`No se pudo sincronizar una operación pendiente: ${error.message}`, 'error');
+          }
+          break;
+        }
+      }
+      const remaining = await pendingCount();
+      setPendingSync(remaining);
+      if (completed > 0) {
+        showMessage(`${completed} operación${completed === 1 ? '' : 'es'} offline sincronizada${completed === 1 ? '' : 's'}.`, 'success');
+        if (order?.id) await loadOrder(order.id).catch(() => {});
+        await loadTables().catch(() => {});
+      }
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   function showMessage(text, type = 'info') {
     setMessage({ text, type });
@@ -214,31 +276,57 @@ function App() {
 
   async function sendToKitchen() {
     if (!order || (!cart.length && !hasUnsentItems) || busy) return;
+    const orderId = order.id;
+    const items = cart.map(({ producto_id, cantidad, notas }) => ({
+      producto_id,
+      cantidad,
+      notas: notesOrNull(notas),
+    }));
+    const itemOperation = cart.length ? {
+      orderId,
+      path: `/ordenes/${orderId}/items`,
+      method: 'POST',
+      body: { items },
+      key: operationKey(),
+    } : null;
+    const sendOperation = {
+      orderId,
+      path: `/ordenes/${orderId}/enviar-cocina`,
+      method: 'POST',
+      body: null,
+      key: operationKey(),
+    };
     setBusy(true);
     setMessage(null);
     try {
       if (cart.length) {
-        await api(`/ordenes/${order.id}/items`, {
+        await api(itemOperation.path, {
           method: 'POST',
-          body: JSON.stringify({
-            items: cart.map(({ producto_id, cantidad, notas }) => ({
-              producto_id,
-              cantidad,
-              notas: notesOrNull(notas),
-            })),
-          }),
+          body: JSON.stringify(itemOperation.body),
+          headers: { 'Idempotency-Key': itemOperation.key },
         });
         setCart([]);
       }
-      const sent = await api(`/ordenes/${order.id}/enviar-cocina`, { method: 'POST' });
-      await loadOrder(order.id);
+      const sent = await api(sendOperation.path, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': sendOperation.key },
+      });
+      await loadOrder(orderId);
       showMessage(
         sent.evento === 'nueva_orden' ? 'Orden enviada a cocina.' : 'Nueva ronda enviada a cocina.',
         'success',
       );
     } catch (error) {
-      handleError(error);
-      if (order?.id) loadOrder(order.id).catch(() => {});
+      if (isNetworkError(error)) {
+        if (itemOperation) await enqueue(itemOperation);
+        await enqueue(sendOperation);
+        setCart([]);
+        setPendingSync(await pendingCount());
+        showMessage('Sin conexión: la ronda quedó guardada y se enviará automáticamente al volver la red.', 'info');
+      } else {
+        handleError(error);
+        if (order?.id) loadOrder(order.id).catch(() => {});
+      }
     } finally {
       setBusy(false);
     }
@@ -319,9 +407,10 @@ function App() {
               disabled={Boolean(order)}
             />
           </label>
-          <span className={`connection ${connected ? 'online' : 'offline'}`}>
-            {connected ? 'En línea' : 'Sin tiempo real'}
+          <span className={`connection ${connected && online ? 'online' : 'offline'}`}>
+            {online ? (connected ? 'En línea' : 'Reconectando') : 'Sin conexión'}
           </span>
+          {(pendingSync > 0 || syncing) && <span className="sync-status">{syncing ? 'Sincronizando…' : `${pendingSync} pendiente${pendingSync === 1 ? '' : 's'}`}</span>}
           {order && (
             <>
               <button

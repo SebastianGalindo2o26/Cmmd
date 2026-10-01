@@ -2,10 +2,12 @@ const apiBase = import.meta.env.VITE_API_URL || '/api';
 
 export async function api(path, options = {}) {
   const isFormData = options.body instanceof FormData;
+  const token = localStorage.getItem('pos_auth_token');
   const response = await fetch(`${apiBase}${path}`, {
     ...options,
     headers: {
       ...(isFormData ? {} : { 'content-type': 'application/json' }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   });

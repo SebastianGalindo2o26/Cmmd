@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { hashPassword } from '../auth.js';
+import { config } from '../config.js';
 import { pool, withTransaction } from '../db/connection.js';
-import { notFound, parseId, validate } from '../http.js';
+import { HttpError, notFound, parseId, validate } from '../http.js';
 
 export const usuariosRouter = Router();
 
@@ -10,6 +12,7 @@ const userSchema = z.object({
   usuario: z.string().trim().min(1).max(80).regex(/^[a-zA-Z0-9._-]+$/, 'Usuario inválido'),
   rol: z.enum(['mesero', 'cocina', 'cajero', 'admin']),
   activo: z.boolean().optional(),
+  password: z.string().min(8).max(128).optional(),
 }).strict();
 
 const selectUsers = `
@@ -40,12 +43,16 @@ usuariosRouter.get('/:id', async (req, res) => {
 
 usuariosRouter.post('/', async (req, res) => {
   const data = validate(userSchema, req.body);
+  if (config.authRequired && !data.password) {
+    throw new HttpError(400, 'La contraseña es obligatoria cuando la autenticación está activa');
+  }
+  const passwordHash = await hashPassword(data.password ?? 'dev-only-password');
   const row = await withTransaction(async (client) => {
     const result = await client.query(
       `INSERT INTO usuarios (nombre, usuario, password_hash, rol, activo)
-       VALUES ($1, $2, 'AUTH_PENDING', $3, $4)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id, nombre, usuario, rol, activo`,
-      [data.nombre, data.usuario, data.rol, data.activo ?? true],
+      [data.nombre, data.usuario, passwordHash, data.rol, data.activo ?? true],
     );
     return result.rows[0];
   });
@@ -56,13 +63,21 @@ usuariosRouter.put('/:id', async (req, res) => {
   const id = parseId(req.params.id);
   const data = validate(userSchema, req.body);
   const row = await withTransaction(async (client) => {
-    const result = await client.query(
-      `UPDATE usuarios
-       SET nombre = $1, usuario = $2, rol = $3, activo = $4
-       WHERE id = $5
-       RETURNING id, nombre, usuario, rol, activo`,
-      [data.nombre, data.usuario, data.rol, data.activo ?? true, id],
-    );
+    const result = data.password
+      ? await client.query(
+        `UPDATE usuarios
+         SET nombre = $1, usuario = $2, password_hash = $3, rol = $4, activo = $5
+         WHERE id = $6
+         RETURNING id, nombre, usuario, rol, activo`,
+        [data.nombre, data.usuario, await hashPassword(data.password), data.rol, data.activo ?? true, id],
+      )
+      : await client.query(
+        `UPDATE usuarios
+         SET nombre = $1, usuario = $2, rol = $3, activo = $4
+         WHERE id = $5
+         RETURNING id, nombre, usuario, rol, activo`,
+        [data.nombre, data.usuario, data.rol, data.activo ?? true, id],
+      );
     if (result.rowCount === 0) throw notFound('Usuario');
     return result.rows[0];
   });

@@ -2,6 +2,7 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import { config } from './config.js';
+import { requireAuthIfEnabled, requireRoleIfEnabled } from './auth.js';
 import { pool } from './db/connection.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { categoriasRouter } from './routes/categorias.js';
@@ -10,6 +11,7 @@ import { ordenesRouter } from './routes/ordenes.js';
 import { productosRouter } from './routes/productos.js';
 import { reportesRouter } from './routes/reportes.js';
 import { usuariosRouter } from './routes/usuarios.js';
+import { authRouter } from './routes/auth.js';
 
 export const app = express();
 
@@ -24,12 +26,13 @@ app.get('/api/health', async (req, res) => {
   res.json({ estado: 'ok' });
 });
 
+app.use('/api/auth', authRouter);
 app.use('/api/categorias', categoriasRouter);
 app.use('/api/productos', productosRouter);
 app.use('/api/mesas', mesasRouter);
 app.use('/api/ordenes', ordenesRouter);
-app.use('/api/reportes', reportesRouter);
-app.use('/api/usuarios', usuariosRouter);
+app.use('/api/reportes', requireAuthIfEnabled, requireRoleIfEnabled('cajero', 'admin'), reportesRouter);
+app.use('/api/usuarios', requireAuthIfEnabled, requireRoleIfEnabled('admin'), usuariosRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

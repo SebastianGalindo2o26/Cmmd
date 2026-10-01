@@ -23,6 +23,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .connection { padding: 9px 12px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
 .connection.online { background: #244f34; color: #bff1cc; }
 .connection.offline { background: #5e332c; color: #ffd2ca; }
+.sync-status { padding: 8px 10px; border-radius: 999px; color: #ffe1ad; background: #604a25; font-size: .72rem; font-weight: 800; }
 .primary, .secondary { border: 0; border-radius: 12px; padding: 12px 16px; font-weight: 800; }
 .primary { color: #fff; background: #b9662f; }
 .secondary { color: #17211b; background: #ece8dd; }

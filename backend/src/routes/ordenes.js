@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { pool, withTransaction } from '../db/connection.js';
+import { findIdempotentResponse, readIdempotencyKey, saveIdempotentResponse } from '../idempotency.js';
 import { HttpError, notFound, parseId, validate } from '../http.js';
 import { createOrder, fetchOrder } from '../services/orders.js';
 
@@ -147,8 +148,13 @@ ordenesRouter.get('/:id', async (req, res) => {
 ordenesRouter.post('/:id/items', async (req, res) => {
   const orderId = parseId(req.params.id, 'orden_id');
   const data = validate(addItemsSchema, req.body);
+  const idempotencyKey = readIdempotencyKey(req);
+  const endpoint = `POST /api/ordenes/${orderId}/items`;
 
   const result = await withTransaction(async (client) => {
+    const cached = await findIdempotentResponse(client, idempotencyKey, endpoint);
+    if (cached) return { body: cached, replayed: true };
+
     const orderResult = await client.query(
       'SELECT id, estado FROM ordenes WHERE id = $1 FOR UPDATE',
       [orderId],
@@ -196,16 +202,23 @@ ordenesRouter.post('/:id/items', async (req, res) => {
       [orderId],
     );
 
-    return { orden_id: orderId, total: totalResult.rows[0].total, items: inserted };
+    const body = { orden_id: orderId, total: totalResult.rows[0].total, items: inserted };
+    await saveIdempotentResponse(client, idempotencyKey, endpoint, body);
+    return { body, replayed: false };
   });
 
-  res.status(201).json(result);
+  res.status(result.replayed ? 200 : 201).json(result.body);
 });
 
 ordenesRouter.post('/:id/enviar-cocina', async (req, res) => {
   const orderId = parseId(req.params.id, 'orden_id');
+  const idempotencyKey = readIdempotencyKey(req);
+  const endpoint = `POST /api/ordenes/${orderId}/enviar-cocina`;
 
   const round = await withTransaction(async (client) => {
+    const cached = await findIdempotentResponse(client, idempotencyKey, endpoint);
+    if (cached) return { body: cached, replayed: true };
+
     const orderResult = await client.query(
       `SELECT o.id, o.mesa_id, m.numero AS mesa_numero, o.estado, o.total,
               o.fecha_apertura
@@ -250,18 +263,23 @@ ordenesRouter.post('/:id/enviar-cocina', async (req, res) => {
       [itemIds],
     );
 
-    return {
+    const body = {
       event: previousResult.rows[0].tenia_rondas ? 'orden_actualizada' : 'nueva_orden',
       payload: { ...order, items: itemsResult.rows },
     };
+    const responseBody = { evento: body.event, ...body.payload };
+    await saveIdempotentResponse(client, idempotencyKey, endpoint, responseBody);
+    return { body, responseBody, replayed: false };
   });
+
+  if (round.replayed) return res.json(round.body);
 
   const io = req.app.get('io');
   emitTo(io, 'kds', round.event, round.payload);
   if (round.event === 'orden_actualizada') {
     emitTo(io, 'tablet', round.event, round.payload);
   }
-  res.json({ evento: round.event, ...round.payload });
+  res.json(round.responseBody);
 });
 
 ordenesRouter.patch('/:id/items/:itemId/estado', async (req, res) => {
