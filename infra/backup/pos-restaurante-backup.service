@@ -1,0 +1,9 @@
+[Unit]
+Description=Respaldo PostgreSQL del POS Restaurante
+Requires=pos-restaurante.service
+After=pos-restaurante.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/pos-restaurante
+ExecStart=/usr/bin/docker compose --env-file .env --profile backup -f infra/docker-compose.yml run --rm backup

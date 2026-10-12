@@ -2,8 +2,8 @@
 
 Este manual sirve para instalar el POS en otra computadora y probarlo desde el
 mismo equipo o desde una tablet y una pantalla conectadas a la misma red local.
-Es un procedimiento de desarrollo/prueba, no un despliegue de producción: aún
-no hay inicio de sesión, HTTPS ni respaldos automáticos.
+También incluye el procedimiento de preparación de una mini PC Linux. El
+HTTPS y la autenticación de tablet/KDS todavía requieren una iteración posterior.
 
 ## 1. Requisitos
 
@@ -239,7 +239,93 @@ sudo systemctl status pos-restaurante.service
 La unidad cubre el arranque de Docker Compose; el autoencendido de la mini PC
 en BIOS/UEFI y la cobertura de la UPS se configuran físicamente en el equipo.
 
-## 10. Problemas frecuentes
+## 10. Despliegue de fase 7 en mini PC Linux
+
+La fase 7 se ejecuta sobre Debian 12 o Ubuntu Server LTS con una cuenta que
+pueda usar Docker. En la mini PC:
+
+1. Instala Docker Engine, el complemento Compose y Git.
+2. Copia el repositorio a `/opt/pos-restaurante`.
+3. Copia `.env.production.example` a `.env` y cambia la contraseña de
+   PostgreSQL, `AUTH_SECRET` y la ruta `BACKUP_DIR`.
+4. Conecta un disco o montaje externo en la ruta configurada para `BACKUP_DIR`.
+5. Ejecuta el despliegue:
+
+```bash
+cd /opt/pos-restaurante
+sudo sh infra/deploy-production.sh
+```
+
+El script construye las imágenes, ejecuta las migraciones incluidas en el
+arranque del backend y comprueba `/api/health`. No ejecuta el seed de desarrollo.
+Para verificar posteriormente:
+
+```bash
+sudo sh infra/check-production.sh
+```
+
+### Red local y Tailscale
+
+Conecta la mini PC, las tablets y la pantalla de cocina a la misma red privada.
+Obtén la IP con `ip addr` y prueba desde otro dispositivo:
+`http://IP_DE_LA_MINI_PC/tablet/`, `/kds/` y `/admin/`. No expongas el puerto
+80 directamente a Internet.
+
+Para soporte remoto instala Tailscale en la mini PC y autorízala desde la
+cuenta del restaurante:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+tailscale ip -4
+```
+
+Usa la IP de Tailscale solo para soporte administrativo. No publiques el panel
+ni el puerto de PostgreSQL en una interfaz pública.
+
+### Arranque, UPS y respaldo automático
+
+Instala el arranque de Compose y el temporizador de backup:
+
+```bash
+sudo cp infra/pos-restaurante.service /etc/systemd/system/
+sudo cp infra/backup/pos-restaurante-backup.service /etc/systemd/system/
+sudo cp infra/backup/pos-restaurante-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now pos-restaurante.service
+sudo systemctl enable --now pos-restaurante-backup.timer
+systemctl list-timers pos-restaurante-backup.timer
+```
+
+El backup diario ejecuta el perfil Compose `backup` a las 03:00, conserva la
+retención configurada y escribe en `BACKUP_DIR`. La carpeta debe estar en un
+disco externo o sincronizarse mediante el mecanismo de almacenamiento elegido;
+una copia en el mismo disco de la mini PC no protege contra su fallo físico.
+
+Configura en BIOS/UEFI `Restore on AC Power Loss` o su equivalente para que la
+mini PC vuelva a encenderse después de un corte. La UPS debe alimentar la mini
+PC, el router y, si aplica, la pantalla de cocina. Haz una prueba controlada y
+verifica que el servicio vuelva a `healthy` antes de usar el sistema en horario
+real.
+
+### Prueba de servicio real y capacitación
+
+Antes de entregar el sistema, ejecuta el flujo completo con el equipo:
+
+- abrir mesa, enviar dos rondas y confirmar estados en KDS;
+- registrar un pago parcial y cerrar con el saldo restante;
+- revisar correlativo y reporte del día;
+- desconectar brevemente una tablet, volver a conectarla y confirmar que la
+  cola pendiente se sincroniza una sola vez;
+- apagar y volver a encender la mini PC desde la UPS, verificando salud y datos;
+- ejecutar un backup y comprobar que el archivo aparece en la ubicación externa.
+
+Capacita a meseros en mesa, carrito, notas, envío y cobro; a cocina en los
+estados de la comanda; y a administración en login, usuarios, reportes,
+reinicio y comprobación de backups. Registra fecha, responsables y resultado
+de cada prueba en el acta operativa del restaurante.
+
+## 11. Problemas frecuentes
 
 **El backend no aparece como `healthy`**
 

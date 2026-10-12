@@ -170,8 +170,26 @@ Ya está implementada y probada la primera parte de resiliencia:
   obligatorio en modo `production`.
 
 La fase 6 aún no está cerrada para producción: falta propagar autenticación a
-las operaciones de tablet y KDS, configurar autoarranque de la mini PC y probar
-la recuperación real de una caída de red y de un respaldo.
+las operaciones de tablet y KDS y probar la recuperación real de una caída de
+red. El arranque de Compose y el procedimiento de respaldo ya tienen archivos
+versionados para la fase 7.
+
+### Fase 7 - avance local de despliegue
+
+Ya quedó preparada la parte que puede versionarse antes de tener la mini PC:
+
+- `.env.production.example` separa secretos y valores de producción de los de
+  desarrollo.
+- `infra/deploy-production.sh` construye, levanta y comprueba el backend sin
+  ejecutar datos de demostración.
+- `infra/check-production.sh` permite revisar salud y estado de contenedores.
+- Unidades `systemd` para arranque de Compose y backup diario con retención.
+- Manual para Debian/Ubuntu, red local, Tailscale, UPS, backup externo,
+  prueba de servicio y capacitación.
+
+La fase 7 todavía requiere ejecutarse en la mini PC real: instalar Docker,
+configurar BIOS/UEFI y UPS, autorizar Tailscale, conectar los dispositivos,
+probar un servicio completo y comprobar una restauración.
 
 ## Arquitectura actual
 
@@ -288,12 +306,15 @@ proyectos. Puede migrarse a TypeScript si el sistema crece.
 │   ├── docker-compose.yml        PostgreSQL, backend y servidor web
 │   ├── Dockerfile                Compilación multi-stage de frontends
 │   ├── nginx.conf                Archivos estáticos, API y Socket.io
+│   ├── deploy-production.sh      Despliegue Linux de producción
+│   ├── check-production.sh       Comprobación de salud de producción
 │   ├── pos-restaurante.service   Arranque de Compose con systemd
-│   └── backup/                   Respaldo manual reproducible de PostgreSQL
+│   └── backup/                   Respaldo manual y temporizador diario
 ├── docs/
 │   ├── README.md                 Este documento
 │   └── modelo-datos.md           Diagrama entidad-relación
-├── .env.example                  Variables de entorno de ejemplo
+├── .env.example                  Variables de entorno de desarrollo
+├── .env.production.example       Plantilla de producción sin secretos reales
 ├── package.json                  Workspace y comandos raíz
 └── plan-pos-restaurante.md       Plan funcional completo
 ```
@@ -865,8 +886,8 @@ Invoke-RestMethod -Method Post `
 - HTTPS y Tailscale todavía no están configurados.
 
 Estas limitaciones son aceptables únicamente para la etapa actual de desarrollo
-local. Antes del despliegue se cerrará CORS, se aplicarán roles y se configurará
-el acceso por la red autorizada.
+local. La fase 7 ya documenta la red autorizada y Tailscale, pero todavía deben
+configurarse en la mini PC y cerrarse los permisos de los clientes operativos.
 
 ## Pruebas realizadas
 
@@ -1019,11 +1040,12 @@ raíz del repositorio.
 
 Para probar desde dos dispositivos físicos, se reemplaza `localhost` por la IP
 local de la computadora que ejecuta Docker y se permite el puerto 80 únicamente
-en la red privada. Tailscale, HTTPS y el endurecimiento de acceso se abordarán
-en la etapa de despliegue.
+en la red privada. El manual de fase 7 documenta Tailscale, UPS, respaldo y
+arranque automático; HTTPS y la autenticación de tablet/KDS siguen pendientes.
 
 ## Siguiente fase
 
-La fase 6 continúa con el cierre de autenticación para tablet/KDS, pruebas de
-recuperación y autoarranque. Después seguirá la fase 7: mini PC, Tailscale,
-respaldos, operación en red real y capacitación.
+La fase 7 continúa con la instalación en la mini PC, Tailscale, UPS, operación
+en red real, restauración comprobada y capacitación. La autenticación de
+tablet/KDS sigue siendo el cierre pendiente de la fase 6. La fase 8 será el
+proyecto separado del menú QR estático.

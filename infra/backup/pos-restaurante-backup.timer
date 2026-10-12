@@ -1,0 +1,11 @@
+[Unit]
+Description=Respaldo diario del POS Restaurante
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=15m
+Unit=pos-restaurante-backup.service
+
+[Install]
+WantedBy=timers.target
