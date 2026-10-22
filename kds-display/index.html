@@ -20,6 +20,8 @@
             <span class="dot"></span>
             <span x-text="connected ? 'En línea' : 'Reconectando'"></span>
           </span>
+          <span class="session-pill" x-show="session" x-text="session?.nombre"></span>
+          <button @click="session ? logout() : loginOpen = true" x-text="session ? 'Salir' : 'Acceder'"></button>
           <button @click="loadOrders" :disabled="loading">Actualizar</button>
         </div>
       </header>
@@ -34,6 +36,20 @@
         <div><strong x-text="pendingItems"></strong><span>ítems activos</span></div>
         <div><strong x-text="readyItems"></strong><span>listos</span></div>
       </section>
+
+      <div x-show="loginOpen" x-transition class="login-backdrop" role="presentation">
+        <form class="login-dialog" @submit.prevent="login">
+          <p class="eyebrow">ACCESO DE COCINA</p>
+          <h2>Iniciar sesión</h2>
+          <p>Usa una cuenta de cocina o administrador.</p>
+          <label>Usuario<input required autofocus x-model="loginForm.usuario" /></label>
+          <label>Contraseña<input required type="password" x-model="loginForm.password" /></label>
+          <div class="login-actions">
+            <button type="button" @click="loginOpen = false">Cancelar</button>
+            <button type="submit" :disabled="loginBusy" x-text="loginBusy ? 'Entrando…' : 'Entrar'"></button>
+          </div>
+        </form>
+      </div>
 
       <section class="orders-grid">
         <template x-for="order in orders" :key="order.id">
@@ -54,6 +70,7 @@
                       <strong x-text="`${item.cantidad}×`"></strong>
                       <span x-text="item.producto_nombre"></span>
                     </div>
+                    <p class="paid-modifiers" x-show="item.modificadores?.length" x-text="`Extras: ${item.modificadores.map((modifier) => modifier.nombre).join(', ')}`"></p>
                     <p x-show="item.notas" x-text="item.notas"></p>
                   </div>
                   <div class="item-action">

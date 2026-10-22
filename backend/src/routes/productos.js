@@ -5,6 +5,7 @@ import path from 'node:path';
 import multer from 'multer';
 import sharp from 'sharp';
 import { z } from 'zod';
+import { requireRoleIfEnabled } from '../auth.js';
 import { config } from '../config.js';
 import { pool, withTransaction } from '../db/connection.js';
 import { HttpError, notFound, parseId, validate } from '../http.js';
@@ -78,7 +79,7 @@ productosRouter.get('/:id', async (req, res) => {
   res.json(rows[0]);
 });
 
-productosRouter.post('/', async (req, res) => {
+productosRouter.post('/', requireRoleIfEnabled('admin'), async (req, res) => {
   const data = validate(productoSchema, req.body);
   const row = await withTransaction(async (client) => {
     const result = await client.query(
@@ -100,7 +101,7 @@ productosRouter.post('/', async (req, res) => {
   res.status(201).json(row);
 });
 
-productosRouter.post('/:id/imagen', receiveImage, async (req, res) => {
+productosRouter.post('/:id/imagen', requireRoleIfEnabled('admin'), receiveImage, async (req, res) => {
   const id = parseId(req.params.id, 'producto_id');
   if (!req.file) throw new HttpError(400, 'Debes enviar un archivo en el campo imagen');
 
@@ -142,7 +143,7 @@ productosRouter.post('/:id/imagen', receiveImage, async (req, res) => {
   }
 });
 
-productosRouter.put('/:id', async (req, res) => {
+productosRouter.put('/:id', requireRoleIfEnabled('admin'), async (req, res) => {
   const id = parseId(req.params.id);
   const data = validate(productoSchema, req.body);
   const row = await withTransaction(async (client) => {
@@ -168,7 +169,7 @@ productosRouter.put('/:id', async (req, res) => {
   res.json(row);
 });
 
-productosRouter.delete('/:id', async (req, res) => {
+productosRouter.delete('/:id', requireRoleIfEnabled('admin'), async (req, res) => {
   const id = parseId(req.params.id);
   const row = await withTransaction(async (client) => {
     const result = await client.query(

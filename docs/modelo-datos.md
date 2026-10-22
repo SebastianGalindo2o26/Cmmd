@@ -8,6 +8,8 @@ erDiagram
   USUARIOS ||--o{ ORDENES : registra
   ORDENES ||--|{ ITEMS_ORDEN : contiene
   PRODUCTOS ||--o{ ITEMS_ORDEN : referencia
+  MODIFICADORES ||--o{ ITEM_MODIFICADORES : selecciona
+  ITEMS_ORDEN ||--o{ ITEM_MODIFICADORES : contiene
   ORDENES ||--o{ PAGOS : recibe
   CORRELATIVOS_DIA ||--o{ ORDENES : numera
 
@@ -50,6 +52,20 @@ erDiagram
     int cantidad
     numeric precio_unitario
     timestamp enviado_cocina_at
+  }
+  MODIFICADORES {
+    int id PK
+    int producto_id FK
+    varchar nombre
+    numeric precio_extra
+    boolean activo
+  }
+  ITEM_MODIFICADORES {
+    int id PK
+    int item_id FK
+    int modificador_id FK
+    varchar nombre
+    numeric precio_extra
   }
   PAGOS {
     int id PK

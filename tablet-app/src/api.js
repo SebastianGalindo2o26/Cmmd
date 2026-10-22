@@ -1,3 +1,5 @@
+import { getToken } from './auth.js';
+
 const apiBase = import.meta.env.VITE_API_URL || '/api';
 
 export async function api(path, options = {}) {
@@ -5,6 +7,7 @@ export async function api(path, options = {}) {
     ...options,
     headers: {
       'content-type': 'application/json',
+      ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
       ...options.headers,
     },
   });

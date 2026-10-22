@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api.js';
+import { clearSession, getToken, getUser, saveSession } from './auth.js';
 import { PaymentDialog, PaymentReceipt } from './components/PaymentDialog.jsx';
 import { useSocket } from './hooks/useSocket.js';
 import { enqueue, listPending, pendingCount, removePending } from './offlineQueue.js';
@@ -28,12 +29,14 @@ function App() {
   const [tables, setTables] = useState([]);
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
+  const [modifiers, setModifiers] = useState([]);
   const [categoryId, setCategoryId] = useState(null);
   const [search, setSearch] = useState('');
   const [order, setOrder] = useState(null);
   const [cart, setCart] = useState([]);
   const [modifierProduct, setModifierProduct] = useState(null);
   const [modifierNote, setModifierNote] = useState('');
+  const [modifierSelection, setModifierSelection] = useState([]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -42,8 +45,12 @@ function App() {
   const [message, setMessage] = useState(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [receipt, setReceipt] = useState(null);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [loginForm, setLoginForm] = useState({ usuario: '', password: '' });
+  const [session, setSession] = useState(getUser);
+  const [sessionToken, setSessionToken] = useState(getToken);
   const [userId, setUserId] = useState(() => Number(
-    localStorage.getItem('pos_usuario_id') || import.meta.env.VITE_USUARIO_ID || 1,
+    getUser()?.id || localStorage.getItem('pos_usuario_id') || import.meta.env.VITE_USUARIO_ID || 1,
   ));
 
   async function loadTables() {
@@ -58,16 +65,19 @@ function App() {
 
   async function loadInitial() {
     try {
-      const [tableData, categoryData, productData] = await Promise.all([
+      const [tableData, categoryData, productData, modifierData] = await Promise.all([
         api('/mesas'),
         api('/categorias'),
         api('/productos?activo=true'),
+        api('/modificadores?activo=true'),
       ]);
       setTables(tableData);
       setCategories(categoryData);
       setProducts(productData);
+      setModifiers(modifierData);
       setCategoryId((current) => current ?? categoryData[0]?.id ?? null);
     } catch (error) {
+      if (error.status === 401) setLoginOpen(true);
       showMessage(error.message, 'error');
     } finally {
       setLoading(false);
@@ -126,6 +136,9 @@ function App() {
       }
       loadTables().catch(handleError);
     },
+  }, {
+    token: sessionToken,
+    onAuthRequired: () => setLoginOpen(true),
   });
 
   const visibleProducts = useMemo(() => {
@@ -182,7 +195,48 @@ function App() {
   }
 
   function handleError(error) {
+    if (error.status === 401) {
+      setLoginOpen(true);
+      showMessage('Inicia sesión para continuar.', 'info');
+      return;
+    }
     showMessage(error.message ?? 'Ocurrió un error', 'error');
+  }
+
+  async function login(event) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const result = await api('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(loginForm),
+      });
+      if (!['mesero', 'cajero', 'admin'].includes(result.usuario.rol)) {
+        throw new Error('Esta cuenta no tiene permisos para usar la tablet.');
+      }
+      saveSession(result);
+      setSession(result.usuario);
+      setSessionToken(result.token);
+      saveUserId(result.usuario.id);
+      setLoginOpen(false);
+      setLoginForm({ usuario: '', password: '' });
+      showMessage(`Sesión iniciada como ${result.usuario.nombre}.`, 'success');
+      await loadInitial();
+    } catch (error) {
+      showMessage(error.message ?? 'No se pudo iniciar sesión', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function logout() {
+    clearSession();
+    setSession(null);
+    setSessionToken(null);
+    setOrder(null);
+    setCart([]);
+    setPaymentOpen(false);
+    showMessage('Sesión cerrada.', 'info');
   }
 
   function saveUserId(value) {
@@ -221,15 +275,20 @@ function App() {
     }
   }
 
-  function addProduct(product, notas = '') {
+  function addProduct(product, notas = '', selectedModifiers = []) {
     if (!order) {
       showMessage('Selecciona una mesa antes de agregar productos.', 'error');
       return;
     }
     setCart((current) => {
-      const existing = current.find((item) => item.producto_id === product.id && item.notas === notas);
+      const modifierKey = selectedModifiers.map((modifier) => modifier.id).sort().join(',');
+      const existing = current.find((item) => item.producto_id === product.id
+        && item.notas === notas
+        && item.modificadores.map((modifier) => modifier.id).sort().join(',') === modifierKey);
       if (existing) {
-        return current.map((item) => item.producto_id === product.id && item.notas === notas
+        return current.map((item) => item.producto_id === product.id
+          && item.notas === notas
+          && item.modificadores.map((modifier) => modifier.id).sort().join(',') === modifierKey
           ? { ...item, cantidad: item.cantidad + 1 }
           : item);
       }
@@ -237,9 +296,10 @@ function App() {
         lineId: `${product.id}-${Date.now()}-${Math.random()}`,
         producto_id: product.id,
         nombre: product.nombre,
-        precio: product.precio,
+        precio: (Number(product.precio) + selectedModifiers.reduce((sum, modifier) => sum + Number(modifier.precio_extra), 0)).toFixed(2),
         cantidad: 1,
         notas,
+        modificadores: selectedModifiers,
       }];
     });
   }
@@ -251,13 +311,15 @@ function App() {
     }
     setModifierProduct(product);
     setModifierNote('');
+    setModifierSelection([]);
   }
 
   function confirmProduct() {
     if (!modifierProduct) return;
-    addProduct(modifierProduct, notesOrNull(modifierNote) ?? '');
+    addProduct(modifierProduct, notesOrNull(modifierNote) ?? '', modifierSelection);
     setModifierProduct(null);
     setModifierNote('');
+    setModifierSelection([]);
   }
 
   function addQuickNote(lineId, note) {
@@ -277,10 +339,11 @@ function App() {
   async function sendToKitchen() {
     if (!order || (!cart.length && !hasUnsentItems) || busy) return;
     const orderId = order.id;
-    const items = cart.map(({ producto_id, cantidad, notas }) => ({
+    const items = cart.map(({ producto_id, cantidad, notas, modificadores }) => ({
       producto_id,
       cantidad,
       notas: notesOrNull(notas),
+      modificadores: modificadores.map((modifier) => modifier.id),
     }));
     const itemOperation = cart.length ? {
       orderId,
@@ -404,12 +467,16 @@ function App() {
               min="1"
               value={Number.isNaN(userId) ? '' : userId}
               onChange={(event) => saveUserId(event.target.value)}
-              disabled={Boolean(order)}
+              disabled={Boolean(order || session)}
             />
           </label>
           <span className={`connection ${connected && online ? 'online' : 'offline'}`}>
             {online ? (connected ? 'En línea' : 'Reconectando') : 'Sin conexión'}
           </span>
+          {session && <span className="session-pill">{session.nombre}</span>}
+          {session
+            ? <button className="secondary" onClick={logout}>Salir</button>
+            : <button className="secondary" onClick={() => setLoginOpen(true)}>Acceder</button>}
           {(pendingSync > 0 || syncing) && <span className="sync-status">{syncing ? 'Sincronizando…' : `${pendingSync} pendiente${pendingSync === 1 ? '' : 's'}`}</span>}
           {order && (
             <>
@@ -511,6 +578,7 @@ function App() {
               <article className="saved-item" key={item.id}>
                 <div>
                   <strong>{item.cantidad} × {item.producto_nombre}</strong>
+                  {item.modificadores?.length > 0 && <small>Extra: {item.modificadores.map((modifier) => modifier.nombre).join(', ')}</small>}
                   {item.notas && <small>{item.notas}</small>}
                 </div>
                 <span className={`status ${item.estado}`}>{item.estado}</span>
@@ -523,6 +591,7 @@ function App() {
                   <strong>{item.nombre}</strong>
                   <span>{money(Number(item.precio) * item.cantidad)}</span>
                 </div>
+                {item.modificadores?.length > 0 && <small>Extra: {item.modificadores.map((modifier) => modifier.nombre).join(', ')}</small>}
                 <div className="quantity">
                   <button type="button" onClick={() => updateCartItem(item.lineId, { cantidad: item.cantidad - 1 })}>−</button>
                   <span>{item.cantidad}</span>
@@ -597,12 +666,22 @@ function App() {
               <button className="icon-button" aria-label="Cerrar producto" onClick={() => setModifierProduct(null)}>×</button>
             </header>
             <div className="modifier-content">
-              <p className="modifier-help">Elige un atajo o escribe una nota para cocina.</p>
+              <p className="modifier-help">Elige modificadores con precio o escribe una nota para cocina.</p>
+              {modifiers.filter((modifier) => modifier.producto_id === modifierProduct.id).length > 0 && (
+                <div className="paid-modifier-options">
+                  {modifiers.filter((modifier) => modifier.producto_id === modifierProduct.id).map((modifier) => {
+                    const selected = modifierSelection.some((item) => item.id === modifier.id);
+                    return <button type="button" className={selected ? 'selected' : ''} key={modifier.id} onClick={() => setModifierSelection((current) => selected ? current.filter((item) => item.id !== modifier.id) : [...current, modifier])}>
+                      {modifier.nombre} · +{money(modifier.precio_extra)}
+                    </button>;
+                  })}
+                </div>
+              )}
               <div className="modifier-options">
                 {quickNotes.map((note) => <button type="button" key={note} onClick={() => setModifierNote((current) => current ? `${current}, ${note}` : note)}>{note}</button>)}
               </div>
               <label className="modifier-input">Nota personalizada<textarea rows="3" maxLength="500" value={modifierNote} onChange={(event) => setModifierNote(event.target.value)} placeholder="Ej. salsa aparte" /></label>
-              <div className="dialog-actions"><button type="button" className="secondary" onClick={() => setModifierProduct(null)}>Cancelar</button><button type="button" className="primary" onClick={confirmProduct}>Agregar · {money(modifierProduct.precio)}</button></div>
+              <div className="dialog-actions"><button type="button" className="secondary" onClick={() => setModifierProduct(null)}>Cancelar</button><button type="button" className="primary" onClick={confirmProduct}>Agregar · {money(Number(modifierProduct.precio) + modifierSelection.reduce((sum, modifier) => sum + Number(modifier.precio_extra), 0))}</button></div>
             </div>
           </section>
         </div>
@@ -610,6 +689,19 @@ function App() {
 
       {receipt && (
         <PaymentReceipt receipt={receipt} money={money} onClose={() => setReceipt(null)} />
+      )}
+
+      {loginOpen && (
+        <div className="dialog-backdrop" role="presentation">
+          <form className="admin-login-dialog" onSubmit={login}>
+            <p className="eyebrow">ACCESO DE OPERADOR</p>
+            <h2>Iniciar sesión</h2>
+            <p className="modifier-help">Usa una cuenta de mesero, cajero o administrador.</p>
+            <label>Usuario<input required autoFocus value={loginForm.usuario} onChange={(event) => setLoginForm({ ...loginForm, usuario: event.target.value })} /></label>
+            <label>Contraseña<input required type="password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} /></label>
+            <div className="dialog-actions"><button type="button" className="secondary" onClick={() => setLoginOpen(false)}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Entrando…' : 'Entrar'}</button></div>
+          </form>
+        </div>
       )}
     </main>
   );

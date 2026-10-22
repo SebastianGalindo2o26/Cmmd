@@ -23,6 +23,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .connection { padding: 9px 12px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
 .connection.online { background: #244f34; color: #bff1cc; }
 .connection.offline { background: #5e332c; color: #ffd2ca; }
+.session-pill { max-width: 150px; overflow: hidden; padding: 9px 12px; border-radius: 999px; color: #28563a; background: #e0f0e3; font-size: .75rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .sync-status { padding: 8px 10px; border-radius: 999px; color: #ffe1ad; background: #604a25; font-size: .72rem; font-weight: 800; }
 .primary, .secondary { border: 0; border-radius: 12px; padding: 12px 16px; font-weight: 800; }
 .primary { color: #fff; background: #b9662f; }
@@ -137,10 +138,17 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .dialog-actions { display: grid; grid-template-columns: auto 1fr; gap: 10px; margin-top: auto; padding-top: 18px; }
 .dialog-actions button { min-height: 52px; }
 .modifier-dialog { width: min(520px, 100%); overflow: hidden; border-radius: 24px; background: #f8f6ef; box-shadow: 0 28px 80px rgb(0 0 0 / 35%); }
+.admin-login-dialog { width: min(430px, 100%); padding: 28px; border-radius: 22px; background: #fffdf8; box-shadow: 0 24px 70px rgb(0 0 0 / 30%); color: #17211b; }
+.admin-login-dialog h2 { margin: 5px 0 8px; }
+.admin-login-dialog label { display: block; margin-top: 16px; font-weight: 800; }
+.admin-login-dialog input { display: block; width: 100%; margin-top: 6px; padding: 11px 12px; border: 1px solid #d8d3c7; border-radius: 10px; }
 .modifier-content { padding: 24px; }
 .modifier-help { margin: 0 0 16px; color: #687269; }
 .modifier-options { display: flex; flex-wrap: wrap; gap: 9px; }
 .modifier-options button { min-height: 44px; padding: 10px 14px; font-size: .8rem; }
+.paid-modifier-options { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 12px; }
+.paid-modifier-options button { min-height: 44px; padding: 10px 14px; border: 1px solid #d7b26f; border-radius: 999px; color: #684313; background: #fff1cc; font-size: .8rem; font-weight: 800; }
+.paid-modifier-options button.selected { color: #fff; background: #b45e28; }
 .modifier-input { display: block; margin-top: 22px; font-weight: 800; }
 .modifier-input textarea { display: block; width: 100%; margin-top: 8px; padding: 12px; border: 1px solid #d6d0c2; border-radius: 12px; resize: vertical; background: #fff; }
 .receipt-dialog { width: min(430px, 100%); padding: 32px; border-radius: 24px; background: #fff; box-shadow: 0 28px 80px rgb(0 0 0 / 35%); text-align: center; }

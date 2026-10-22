@@ -8,18 +8,31 @@ const currency = new Intl.NumberFormat('es-GT', {
 });
 
 async function api(path, options = {}) {
+  const token = localStorage.getItem('pos_auth_token');
   const response = await fetch(`${apiBase}${path}`, {
     ...options,
-    headers: { 'content-type': 'application/json', ...options.headers },
+    headers: {
+      'content-type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
   });
   const body = response.status === 204 ? null : await response.json();
-  if (!response.ok) throw new Error(body?.error ?? 'No se pudo completar la solicitud');
+  if (!response.ok) {
+    const error = new Error(body?.error ?? 'No se pudo completar la solicitud');
+    error.status = response.status;
+    throw error;
+  }
   return body;
 }
 
 Alpine.data('kds', () => ({
   orders: [],
   connected: false,
+  session: null,
+  loginOpen: false,
+  loginForm: { usuario: '', password: '' },
+  loginBusy: false,
   loading: true,
   notice: null,
   busyItems: [],
@@ -44,20 +57,31 @@ Alpine.data('kds', () => ({
   },
 
   async init() {
+    try { this.session = JSON.parse(localStorage.getItem('pos_auth_user') ?? 'null'); } catch { this.session = null; }
     this.connectSocket();
     await this.loadOrders();
     this.timer = setInterval(() => { this.now = Date.now(); }, 1_000);
   },
 
   connectSocket() {
+    this.socket?.close();
+    const token = localStorage.getItem('pos_auth_token');
     this.socket = io(import.meta.env.VITE_SOCKET_URL || window.location.origin, {
       query: { tipo: 'kds' },
+      auth: token ? { token } : {},
     });
     this.socket.on('connect', () => {
       this.connected = true;
       this.loadOrders();
     });
     this.socket.on('disconnect', () => { this.connected = false; });
+    this.socket.on('connect_error', (error) => {
+      this.connected = false;
+      if (error.message === 'auth_required' || error.message === 'role_forbidden') {
+        this.loginOpen = true;
+        this.showNotice('Inicia sesión con una cuenta de cocina o administrador.', 'error');
+      }
+    });
     this.socket.on('nueva_orden', (payload) => {
       this.mergeRound(payload, true);
       this.showNotice(`Nueva orden · Mesa ${payload.mesa_numero}`, 'new');
@@ -83,6 +107,7 @@ Alpine.data('kds', () => ({
         activeIds.has(order.id) || (order._socketReceivedAt ?? 0) >= startedAt
       ));
     } catch (error) {
+      if (error.status === 401) this.loginOpen = true;
       this.showNotice(error.message, 'error');
     } finally {
       this.loading = false;
@@ -124,6 +149,41 @@ Alpine.data('kds', () => ({
     } finally {
       this.busyItems = this.busyItems.filter((id) => id !== item.id);
     }
+  },
+
+  async login() {
+    this.loginBusy = true;
+    try {
+      const result = await api('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(this.loginForm),
+      });
+      if (!['cocina', 'admin'].includes(result.usuario.rol)) {
+        throw new Error('Esta cuenta no tiene permisos para usar cocina.');
+      }
+      localStorage.setItem('pos_auth_token', result.token);
+      localStorage.setItem('pos_auth_user', JSON.stringify(result.usuario));
+      this.session = result.usuario;
+      this.loginForm = { usuario: '', password: '' };
+      this.loginOpen = false;
+      this.showNotice(`Sesión iniciada como ${result.usuario.nombre}.`, 'new');
+      this.connectSocket();
+      await this.loadOrders();
+    } catch (error) {
+      this.showNotice(error.message ?? 'No se pudo iniciar sesión', 'error');
+    } finally {
+      this.loginBusy = false;
+    }
+  },
+
+  logout() {
+    localStorage.removeItem('pos_auth_token');
+    localStorage.removeItem('pos_auth_user');
+    this.session = null;
+    this.orders = [];
+    this.connected = false;
+    this.socket?.close();
+    this.showNotice('Sesión cerrada.', 'round');
   },
 
   nextState(state) {

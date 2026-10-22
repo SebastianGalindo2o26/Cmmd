@@ -3,7 +3,8 @@
 Este manual sirve para instalar el POS en otra computadora y probarlo desde el
 mismo equipo o desde una tablet y una pantalla conectadas a la misma red local.
 También incluye el procedimiento de preparación de una mini PC Linux. El
-HTTPS y la autenticación de tablet/KDS todavía requieren una iteración posterior.
+HTTPS y la validación física del despliegue todavía requieren una iteración
+posterior.
 
 ## 1. Requisitos
 
@@ -205,11 +206,11 @@ Después reconstruye el backend:
 docker compose --env-file .env -f infra/docker-compose.yml up -d --build backend web
 ```
 
-Con esa opción, `/api/usuarios` exige un token de administrador y los reportes
-exigen un usuario `cajero` o `admin`. El panel muestra el diálogo **Acceder**.
-Las operaciones de tablet y KDS todavía deben recibir la autenticación de
-operador en la siguiente iteración de endurecimiento; no uses esta opción como
-seguridad completa de producción todavía.
+Con esa opción, `/api/usuarios` exige un token de administrador, los reportes
+exigen un usuario `cajero` o `admin`, la tablet acepta `mesero`, `cajero` o
+`admin`, y el KDS acepta `cocina` o `admin`. Cada interfaz muestra su diálogo
+**Acceder** y Socket.io también valida el token. La recuperación física de red y
+HTTPS siguen siendo tareas de producción.
 
 ## 9. Respaldo manual de PostgreSQL
 

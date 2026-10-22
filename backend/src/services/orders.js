@@ -70,7 +70,11 @@ export async function fetchOrder(db, orderId) {
     `SELECT i.id, i.producto_id, p.nombre AS producto_nombre,
             i.cantidad, i.notas, i.precio_unitario,
             (i.cantidad * i.precio_unitario)::numeric(10,2) AS subtotal,
-            i.estado, i.enviado_cocina_at
+            i.estado, i.enviado_cocina_at,
+            COALESCE((SELECT jsonb_agg(jsonb_build_object(
+              'id', im.modificador_id, 'nombre', im.nombre,
+              'precio_extra', im.precio_extra
+            ) ORDER BY im.id) FROM item_modificadores im WHERE im.item_id = i.id), '[]'::jsonb) AS modificadores
      FROM items_orden i
      JOIN productos p ON p.id = i.producto_id
      WHERE i.orden_id = $1

@@ -12,6 +12,7 @@ import { productosRouter } from './routes/productos.js';
 import { reportesRouter } from './routes/reportes.js';
 import { usuariosRouter } from './routes/usuarios.js';
 import { authRouter } from './routes/auth.js';
+import { modificadoresRouter } from './routes/modificadores.js';
 
 export const app = express();
 
@@ -27,10 +28,11 @@ app.get('/api/health', async (req, res) => {
 });
 
 app.use('/api/auth', authRouter);
-app.use('/api/categorias', categoriasRouter);
-app.use('/api/productos', productosRouter);
-app.use('/api/mesas', mesasRouter);
-app.use('/api/ordenes', ordenesRouter);
+app.use('/api/categorias', requireAuthIfEnabled, requireRoleIfEnabled('mesero', 'cajero', 'admin'), categoriasRouter);
+app.use('/api/productos', requireAuthIfEnabled, requireRoleIfEnabled('mesero', 'cajero', 'admin'), productosRouter);
+app.use('/api/modificadores', requireAuthIfEnabled, requireRoleIfEnabled('mesero', 'cajero', 'admin'), modificadoresRouter);
+app.use('/api/mesas', requireAuthIfEnabled, requireRoleIfEnabled('mesero', 'cajero', 'admin'), mesasRouter);
+app.use('/api/ordenes', requireAuthIfEnabled, requireRoleIfEnabled('mesero', 'cajero', 'cocina', 'admin'), ordenesRouter);
 app.use('/api/reportes', requireAuthIfEnabled, requireRoleIfEnabled('cajero', 'admin'), reportesRouter);
 app.use('/api/usuarios', requireAuthIfEnabled, requireRoleIfEnabled('admin'), usuariosRouter);
 

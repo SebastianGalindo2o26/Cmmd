@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { requireRoleIfEnabled } from '../auth.js';
 import { pool, withTransaction } from '../db/connection.js';
 import { HttpError, notFound, parseId, validate } from '../http.js';
 import { createOrder } from '../services/orders.js';
@@ -20,7 +21,7 @@ mesasRouter.get('/', async (req, res) => {
   res.json(rows);
 });
 
-mesasRouter.post('/', async (req, res) => {
+mesasRouter.post('/', requireRoleIfEnabled('admin'), async (req, res) => {
   const data = validate(mesaSchema, req.body);
   const row = await withTransaction(async (client) => {
     const result = await client.query(
@@ -40,7 +41,8 @@ const abrirMesaSchema = z.object({
 mesasRouter.post('/:id/abrir', async (req, res) => {
   const mesaId = parseId(req.params.id, 'mesa_id');
   const data = validate(abrirMesaSchema, req.body);
-  const order = await createOrder({ mesaId, usuarioId: data.usuario_id });
+  const usuarioId = req.user?.rol === 'mesero' ? Number(req.user.sub) : data.usuario_id;
+  const order = await createOrder({ mesaId, usuarioId });
   req.app.get('io')?.to('tablet').emit('mesa_actualizada', {
     mesa_id: mesaId,
     estado: 'ocupada',
@@ -49,7 +51,7 @@ mesasRouter.post('/:id/abrir', async (req, res) => {
   res.status(201).json(order);
 });
 
-mesasRouter.put('/:id', async (req, res) => {
+mesasRouter.put('/:id', requireRoleIfEnabled('admin'), async (req, res) => {
   const id = parseId(req.params.id);
   const data = validate(mesaSchema, req.body);
   const row = await withTransaction(async (client) => {
@@ -64,7 +66,7 @@ mesasRouter.put('/:id', async (req, res) => {
   res.json(row);
 });
 
-mesasRouter.delete('/:id', async (req, res) => {
+mesasRouter.delete('/:id', requireRoleIfEnabled('admin'), async (req, res) => {
   const id = parseId(req.params.id);
   await withTransaction(async (client) => {
     const mesa = await client.query('SELECT estado FROM mesas WHERE id = $1 FOR UPDATE', [id]);

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { requireRoleIfEnabled } from '../auth.js';
 import { pool, withTransaction } from '../db/connection.js';
 import { notFound, parseId, validate } from '../http.js';
 
@@ -18,7 +19,7 @@ categoriasRouter.get('/', async (req, res) => {
   res.json(rows);
 });
 
-categoriasRouter.post('/', async (req, res) => {
+categoriasRouter.post('/', requireRoleIfEnabled('admin'), async (req, res) => {
   const data = validate(categoriaSchema, req.body);
   const row = await withTransaction(async (client) => {
     const result = await client.query(
@@ -32,7 +33,7 @@ categoriasRouter.post('/', async (req, res) => {
   res.status(201).json(row);
 });
 
-categoriasRouter.put('/:id', async (req, res) => {
+categoriasRouter.put('/:id', requireRoleIfEnabled('admin'), async (req, res) => {
   const id = parseId(req.params.id);
   const data = validate(categoriaSchema, req.body);
   const row = await withTransaction(async (client) => {
@@ -49,7 +50,7 @@ categoriasRouter.put('/:id', async (req, res) => {
   res.json(row);
 });
 
-categoriasRouter.delete('/:id', async (req, res) => {
+categoriasRouter.delete('/:id', requireRoleIfEnabled('admin'), async (req, res) => {
   const id = parseId(req.params.id);
   await withTransaction(async (client) => {
     const result = await client.query('DELETE FROM categorias WHERE id = $1', [id]);

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { requireRoleIfEnabled } from '../auth.js';
 import { config } from '../config.js';
 import { pool, withTransaction } from '../db/connection.js';
 import { findIdempotentResponse, readIdempotencyKey, saveIdempotentResponse } from '../idempotency.js';
@@ -17,6 +18,7 @@ const orderItemSchema = z.object({
   producto_id: z.number().int().positive(),
   cantidad: z.number().int().min(1).max(99),
   notas: z.string().trim().max(500).nullable().optional(),
+  modificadores: z.array(z.number().int().positive()).max(20).optional().default([]),
 }).strict();
 
 const addItemsSchema = z.object({
@@ -62,9 +64,10 @@ function emitTo(io, room, event, payload) {
   io?.to(room).emit(event, payload);
 }
 
-ordenesRouter.post('/', async (req, res) => {
+ordenesRouter.post('/', requireRoleIfEnabled('mesero', 'cajero', 'admin'), async (req, res) => {
   const data = validate(createOrderSchema, req.body);
-  const order = await createOrder({ mesaId: data.mesa_id, usuarioId: data.usuario_id });
+  const usuarioId = req.user?.rol === 'mesero' ? Number(req.user.sub) : data.usuario_id;
+  const order = await createOrder({ mesaId: data.mesa_id, usuarioId });
   emitTo(req.app.get('io'), 'tablet', 'mesa_actualizada', {
     mesa_id: data.mesa_id,
     estado: 'ocupada',
@@ -73,13 +76,17 @@ ordenesRouter.post('/', async (req, res) => {
   res.status(201).json(order);
 });
 
-ordenesRouter.get('/cocina/activas', async (req, res) => {
+ordenesRouter.get('/cocina/activas', requireRoleIfEnabled('cocina', 'admin'), async (req, res) => {
   const { rows } = await pool.query(
     `SELECT o.id, o.mesa_id, m.numero AS mesa_numero, o.total,
             o.fecha_apertura,
             i.id AS item_id, i.producto_id, p.nombre AS producto_nombre,
             i.cantidad, i.notas, i.precio_unitario, i.estado,
-            i.enviado_cocina_at
+            i.enviado_cocina_at,
+            COALESCE((SELECT jsonb_agg(jsonb_build_object(
+              'id', im.modificador_id, 'nombre', im.nombre,
+              'precio_extra', im.precio_extra
+            ) ORDER BY im.id) FROM item_modificadores im WHERE im.item_id = i.id), '[]'::jsonb) AS modificadores
      FROM ordenes o
      JOIN mesas m ON m.id = o.mesa_id
      JOIN items_orden i ON i.orden_id = o.id AND i.enviado_cocina_at IS NOT NULL
@@ -109,13 +116,14 @@ ordenesRouter.get('/cocina/activas', async (req, res) => {
       precio_unitario: row.precio_unitario,
       estado: row.estado,
       enviado_cocina_at: row.enviado_cocina_at,
+      modificadores: row.modificadores,
     });
   }
 
   res.json([...orders.values()]);
 });
 
-ordenesRouter.get('/dia/:fecha', async (req, res) => {
+ordenesRouter.get('/dia/:fecha', requireRoleIfEnabled('cajero', 'admin'), async (req, res) => {
   const fecha = validate(dateSchema, req.params.fecha);
   const { rows } = await pool.query(
     `SELECT o.id, o.correlativo, o.fecha_correlativo, o.estado,
@@ -136,7 +144,7 @@ ordenesRouter.get('/dia/:fecha', async (req, res) => {
   res.json(rows);
 });
 
-ordenesRouter.get('/:id', async (req, res) => {
+ordenesRouter.get('/:id', requireRoleIfEnabled('mesero', 'cajero', 'cocina', 'admin'), async (req, res) => {
   const orderId = parseId(req.params.id, 'orden_id');
   const order = await withTransaction(async (client) => {
     await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
@@ -145,7 +153,7 @@ ordenesRouter.get('/:id', async (req, res) => {
   res.json(order);
 });
 
-ordenesRouter.post('/:id/items', async (req, res) => {
+ordenesRouter.post('/:id/items', requireRoleIfEnabled('mesero', 'cajero', 'admin'), async (req, res) => {
   const orderId = parseId(req.params.id, 'orden_id');
   const data = validate(addItemsSchema, req.body);
   const idempotencyKey = readIdempotencyKey(req);
@@ -175,9 +183,35 @@ ordenesRouter.post('/:id/items', async (req, res) => {
     }
     const products = new Map(productsResult.rows.map((product) => [product.id, product]));
 
+    const modifierIds = [...new Set(data.items.flatMap((item) => item.modificadores))];
+    const modifiersResult = modifierIds.length === 0
+      ? { rows: [], rowCount: 0 }
+      : await client.query(
+        `SELECT id, producto_id, nombre, precio_extra
+         FROM modificadores
+         WHERE id = ANY($1::integer[]) AND activo = true`,
+        [modifierIds],
+      );
+    if (modifiersResult.rowCount !== modifierIds.length) {
+      throw new HttpError(409, 'Uno o más modificadores no existen o están inactivos');
+    }
+    const modifiers = new Map(modifiersResult.rows.map((modifier) => [modifier.id, modifier]));
+
     const inserted = [];
     for (const item of data.items) {
       const product = products.get(item.producto_id);
+      const selectedModifiers = [...new Set(item.modificadores)].map((modifierId) => {
+        const modifier = modifiers.get(modifierId);
+        if (modifier.producto_id !== item.producto_id) {
+          throw new HttpError(409, 'Un modificador no pertenece al producto seleccionado');
+        }
+        return modifier;
+      });
+      const unitPrice = Number(product.precio)
+        + selectedModifiers.reduce((sum, modifier) => sum + Number(modifier.precio_extra), 0);
+      if (!Number.isFinite(unitPrice) || unitPrice > 99_999_999.99) {
+        throw new HttpError(409, 'El precio final del producto excede el límite permitido');
+      }
       const insertResult = await client.query(
         `INSERT INTO items_orden
           (orden_id, producto_id, cantidad, notas, precio_unitario)
@@ -185,9 +219,20 @@ ordenesRouter.post('/:id/items', async (req, res) => {
          RETURNING id, producto_id, cantidad, notas, precio_unitario,
                    (cantidad * precio_unitario)::numeric(10,2) AS subtotal,
                    estado, enviado_cocina_at`,
-        [orderId, item.producto_id, item.cantidad, item.notas ?? null, product.precio],
+        [orderId, item.producto_id, item.cantidad, item.notas ?? null, unitPrice.toFixed(2)],
       );
-      inserted.push({ ...insertResult.rows[0], producto_nombre: product.nombre });
+      for (const modifier of selectedModifiers) {
+        await client.query(
+          `INSERT INTO item_modificadores (item_id, modificador_id, nombre, precio_extra)
+           VALUES ($1, $2, $3, $4)`,
+          [insertResult.rows[0].id, modifier.id, modifier.nombre, modifier.precio_extra],
+        );
+      }
+      inserted.push({
+        ...insertResult.rows[0],
+        producto_nombre: product.nombre,
+        modificadores: selectedModifiers.map(({ id, nombre, precio_extra }) => ({ id, nombre, precio_extra })),
+      });
     }
 
     const totalResult = await client.query(
@@ -210,7 +255,7 @@ ordenesRouter.post('/:id/items', async (req, res) => {
   res.status(result.replayed ? 200 : 201).json(result.body);
 });
 
-ordenesRouter.post('/:id/enviar-cocina', async (req, res) => {
+ordenesRouter.post('/:id/enviar-cocina', requireRoleIfEnabled('mesero', 'cajero', 'admin'), async (req, res) => {
   const orderId = parseId(req.params.id, 'orden_id');
   const idempotencyKey = readIdempotencyKey(req);
   const endpoint = `POST /api/ordenes/${orderId}/enviar-cocina`;
@@ -255,7 +300,11 @@ ordenesRouter.post('/:id/enviar-cocina', async (req, res) => {
     const itemsResult = await client.query(
       `SELECT i.id, i.producto_id, p.nombre AS producto_nombre,
               i.cantidad, i.notas, i.precio_unitario, i.estado,
-              i.enviado_cocina_at
+              i.enviado_cocina_at,
+              COALESCE((SELECT jsonb_agg(jsonb_build_object(
+                'id', im.modificador_id, 'nombre', im.nombre,
+                'precio_extra', im.precio_extra
+              ) ORDER BY im.id) FROM item_modificadores im WHERE im.item_id = i.id), '[]'::jsonb) AS modificadores
        FROM items_orden i
        JOIN productos p ON p.id = i.producto_id
        WHERE i.id = ANY($1::integer[])
@@ -282,7 +331,7 @@ ordenesRouter.post('/:id/enviar-cocina', async (req, res) => {
   res.json(round.responseBody);
 });
 
-ordenesRouter.patch('/:id/items/:itemId/estado', async (req, res) => {
+ordenesRouter.patch('/:id/items/:itemId/estado', requireRoleIfEnabled('cocina', 'admin'), async (req, res) => {
   const orderId = parseId(req.params.id, 'orden_id');
   const itemId = parseId(req.params.itemId, 'item_id');
   const data = validate(itemStateSchema, req.body);
@@ -339,7 +388,7 @@ ordenesRouter.patch('/:id/items/:itemId/estado', async (req, res) => {
   res.json(payload);
 });
 
-ordenesRouter.post('/:id/pagos', async (req, res) => {
+ordenesRouter.post('/:id/pagos', requireRoleIfEnabled('cajero', 'admin', 'mesero'), async (req, res) => {
   const orderId = parseId(req.params.id, 'orden_id');
   const data = validate(paymentSchema, req.body);
 

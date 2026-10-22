@@ -58,9 +58,7 @@ Ya está implementado:
 
 Pendiente después de las fases implementadas:
 
-- CRUD de modificadores.
-- Cierre de autenticación para todos los clientes operativos; la fase 6 ya
-  incluye el núcleo de credenciales y la protección administrativa opcional.
+- Validación física de red, recuperación y despliegue en la mini PC.
 
 La API de fase 1 cubre el flujo completo: catálogo → mesa → orden → rondas de
 cocina → estados → uno o varios pagos → correlativo y cierre. El código de fase
@@ -126,8 +124,8 @@ Incluye:
 
 El panel usa la misma API y el mismo proxy de Nginx que tablet y cocina. Con
 `AUTH_REQUIRED=true`, el login administrativo protege reportes y usuarios por
-rol; el resto de la autenticación operativa queda pendiente para el cierre de
-la fase 6.
+rol; tablet y KDS incorporan su propio login cuando la autenticación está
+activa.
 
 ### Fase 5 - completada localmente
 
@@ -147,8 +145,9 @@ La tablet ahora usa una interfaz tipo kiosco optimizada para operación táctil:
 - Diseño responsive para tablet horizontal y pantallas estrechas, manteniendo
   el flujo existente de enviar a cocina y cobrar.
 
-Los atajos de esta fase son notas operativas. Los modificadores con precio extra
-y su CRUD de catálogo siguen reservados para una fase posterior.
+Los atajos de esta fase siguen siendo notas operativas. Los modificadores con
+precio extra ya tienen CRUD administrativo y se guardan como parte histórica
+de cada ítem enviado.
 
 ### Fase 6 - avance local de resiliencia
 
@@ -169,9 +168,10 @@ Ya está implementada y probada la primera parte de resiliencia:
 - `restart: unless-stopped` en los tres servicios y secreto de autenticación
   obligatorio en modo `production`.
 
-La fase 6 aún no está cerrada para producción: falta propagar autenticación a
-las operaciones de tablet y KDS y probar la recuperación real de una caída de
-red. El arranque de Compose y el procedimiento de respaldo ya tienen archivos
+La fase 6 ya incluye autenticación para las operaciones de tablet y KDS cuando
+`AUTH_REQUIRED=true`, además de permisos específicos para cada rol. Solo falta
+probar la recuperación real de una caída de red con dispositivos físicos. El
+arranque de Compose y el procedimiento de respaldo ya tienen archivos
 versionados para la fase 7.
 
 ### Fase 7 - avance local de despliegue
@@ -288,7 +288,7 @@ proyectos. Puede migrarse a TypeScript si el sistema crece.
 │   │   │   ├── connection.js     Pool y helper de transacciones
 │   │   │   └── migrate.js        Ejecutor de migraciones
 │   │   ├── middleware/           Manejo centralizado de errores
-│   │   ├── routes/               Categorías, productos y mesas
+│   │   ├── routes/               Catálogo, modificadores, órdenes y auth
 │   │   ├── services/             Apertura transaccional de órdenes
 │   │   ├── sockets/              Registro de dispositivos y salas Socket.io
 │   │   ├── utils/                Reservado para lógica compartida
@@ -331,7 +331,7 @@ interna de migraciones.
 |---|---|
 | `categorias` | Agrupa los productos y controla su orden visual. |
 | `productos` | Catálogo, precios, imágenes y estado activo. |
-| `modificadores` | Opciones futuras como “sin cebolla” o “extra queso”. |
+| `modificadores` | Opciones configurables con precio extra por producto. |
 | `mesas` | Número único y estado libre/ocupada. |
 | `usuarios` | Personal y roles del sistema. |
 | `ordenes` | Encabezado, mesa, usuario, total, estado y correlativo. |
@@ -583,6 +583,19 @@ La carga acepta JPG, PNG, WebP o GIF de hasta 5 MB. La imagen se rota según sus
 metadatos, se reduce sin ampliar y se convierte a WebP antes de guardarse en
 `UPLOAD_DIR` (por defecto `backend/uploads`). La respuesta actualiza
 `imagen_url` con una ruta `/uploads/...`.
+
+### Modificadores con precio extra
+
+Los modificadores activos se consultan desde la tablet con:
+
+```text
+GET /api/modificadores?producto_id=1&activo=true
+```
+
+Administración puede crearlos, editarlos y desactivarlos con `POST`, `PUT` y
+`DELETE` sobre `/api/modificadores`. Al enviar una ronda, cada ítem puede incluir
+`modificadores: [id, ...]`; el backend verifica que pertenezcan al producto,
+suma sus precios y guarda una copia histórica en `item_modificadores`.
 
 ### Administración, historial y reportes
 
@@ -874,10 +887,10 @@ Invoke-RestMethod -Method Post `
 - Express oculta el encabezado `X-Powered-By`.
 - El cuerpo JSON está limitado a 1 MB.
 - CORS está abierto mientras se desarrollan clientes en distintos puertos.
-- La autenticación administrativa se activa con `AUTH_REQUIRED=true`; tablet y
-  KDS todavía deben propagar el token de operador para cerrar esta fase.
-- `usuario_id` y el tipo de sala Socket.io se confían durante el desarrollo;
-  todavía no representan una frontera de seguridad.
+- La autenticación operativa y administrativa se activa con `AUTH_REQUIRED=true`;
+  tablet y KDS validan token y rol antes de usar API o Socket.io.
+- Con `AUTH_REQUIRED=false`, `usuario_id` y el tipo de sala Socket.io se confían
+  durante el desarrollo; ese modo no representa una frontera de seguridad.
 - Los endpoints administrativos no deben exponerse fuera de una red de
   confianza mientras `AUTH_REQUIRED` permanezca desactivado.
 - No se deben utilizar las credenciales de ejemplo en producción.
@@ -1041,11 +1054,11 @@ raíz del repositorio.
 Para probar desde dos dispositivos físicos, se reemplaza `localhost` por la IP
 local de la computadora que ejecuta Docker y se permite el puerto 80 únicamente
 en la red privada. El manual de fase 7 documenta Tailscale, UPS, respaldo y
-arranque automático; HTTPS y la autenticación de tablet/KDS siguen pendientes.
+arranque automático; HTTPS y la configuración física siguen pendientes.
 
 ## Siguiente fase
 
 La fase 7 continúa con la instalación en la mini PC, Tailscale, UPS, operación
-en red real, restauración comprobada y capacitación. La autenticación de
-tablet/KDS sigue siendo el cierre pendiente de la fase 6. La fase 8 será el
-proyecto separado del menú QR estático.
+en red real, restauración comprobada y capacitación. La prueba física de
+recuperación de red sigue siendo el cierre pendiente de la fase 6. La fase 8
+será el proyecto separado del menú QR estático.

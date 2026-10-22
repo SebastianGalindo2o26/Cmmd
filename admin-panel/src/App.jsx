@@ -20,6 +20,7 @@ const today = () => new Intl.DateTimeFormat('en-CA', {
 const emptyProduct = () => ({
   nombre: '', descripcion: '', precio: '', imagen_url: null, categoria_id: '', activo: true,
 });
+const emptyModifier = () => ({ nombre: '', precio_extra: '', activo: true });
 
 const emptyCategory = () => ({ nombre: '', imagen_url: '', orden: 0 });
 const emptyUser = () => ({ nombre: '', usuario: '', rol: 'mesero', activo: true, password: '' });
@@ -43,6 +44,9 @@ function App() {
   const [categoryForm, setCategoryForm] = useState(emptyCategory);
   const [userForm, setUserForm] = useState(emptyUser);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [modifiers, setModifiers] = useState([]);
+  const [modifierForm, setModifierForm] = useState(emptyModifier);
+  const [editingModifier, setEditingModifier] = useState(null);
   const [editingCategory, setEditingCategory] = useState(null);
   const [editingUser, setEditingUser] = useState(null);
   const [imageFile, setImageFile] = useState(null);
@@ -83,6 +87,10 @@ function App() {
     ]);
     setCategories(categoryData);
     setProducts(productData);
+  }
+
+  async function loadModifiers(productId) {
+    setModifiers(await api(`/modificadores?producto_id=${productId}`));
   }
 
   async function login(event) {
@@ -160,12 +168,62 @@ function App() {
       activo: product.activo,
     });
     setImageFile(null);
+    setModifierForm(emptyModifier());
+    setEditingModifier(null);
+    loadModifiers(product.id).catch(handleError);
   }
 
   function resetProduct() {
     setEditingProduct(null);
     setProductForm(emptyProduct());
     setImageFile(null);
+    setModifiers([]);
+    setModifierForm(emptyModifier());
+    setEditingModifier(null);
+  }
+
+  function editModifier(modifier) {
+    setEditingModifier(modifier.id);
+    setModifierForm({
+      nombre: modifier.nombre,
+      precio_extra: modifier.precio_extra,
+      activo: modifier.activo,
+    });
+  }
+
+  async function saveModifier() {
+    if (!editingProduct) return;
+    setBusy(true);
+    try {
+      await api(editingModifier ? `/modificadores/${editingModifier}` : '/modificadores', {
+        method: editingModifier ? 'PUT' : 'POST',
+        body: JSON.stringify({
+          producto_id: editingProduct,
+          nombre: modifierForm.nombre,
+          precio_extra: Number(modifierForm.precio_extra),
+          activo: modifierForm.activo,
+        }),
+      });
+      await loadModifiers(editingProduct);
+      setEditingModifier(null);
+      setModifierForm(emptyModifier());
+      showMessage('Modificador guardado correctamente.');
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteModifier(modifier) {
+    if (!window.confirm(`¿Desactivar ${modifier.nombre}?`)) return;
+    try {
+      await api(`/modificadores/${modifier.id}`, { method: 'DELETE' });
+      await loadModifiers(editingProduct);
+      showMessage('Modificador desactivado.');
+    } catch (error) {
+      handleError(error);
+    }
   }
 
   async function saveProduct(event) {
@@ -284,7 +342,7 @@ function App() {
       setEditingUser(null);
       setUserForm(emptyUser());
       await loadUsers();
-      showMessage('Usuario guardado. La autenticación se habilitará en la fase de producción.');
+      showMessage('Usuario guardado. La contraseña se aplica si se proporcionó.');
     } catch (error) {
       handleError(error);
     } finally {
@@ -346,7 +404,7 @@ function App() {
             <div className="product-admin-grid">{visibleProducts.map((product) => <article className={!product.activo ? 'product-admin-card inactive' : 'product-admin-card'} key={product.id}>{product.imagen_url ? <img src={product.imagen_url} alt="" /> : <div className="image-placeholder">{product.nombre.slice(0, 1)}</div>}<div className="product-copy"><div className="product-title"><h3>{product.nombre}</h3><span className={product.activo ? 'active-label' : 'inactive-label'}>{product.activo ? 'Activo' : 'Inactivo'}</span></div><p>{product.categoria_nombre ?? 'Sin categoría'}</p><strong>{money(product.precio)}</strong></div><div className="card-actions"><button className="secondary-button" onClick={() => editProduct(product)}>Editar</button><button className="link-button" onClick={() => toggleProduct(product)}>{product.activo ? 'Desactivar' : 'Activar'}</button></div></article>)}{!visibleProducts.length && <p className="empty-state">No hay productos para este filtro.</p>}</div>
           </section>
 
-          <form className="panel product-form" onSubmit={saveProduct}><div className="panel-heading"><div><p className="eyebrow">{editingProduct ? 'EDICIÓN' : 'NUEVO REGISTRO'}</p><h2>{editingProduct ? 'Editar producto' : 'Agregar producto'}</h2></div></div><label>Nombre<input required maxLength="160" value={productForm.nombre} onChange={(event) => setProductForm({ ...productForm, nombre: event.target.value })} /></label><label>Descripción<textarea rows="3" value={productForm.descripcion} onChange={(event) => setProductForm({ ...productForm, descripcion: event.target.value })} /></label><div className="form-grid"><label>Precio<input required type="number" min="0" step="0.01" value={productForm.precio} onChange={(event) => setProductForm({ ...productForm, precio: event.target.value })} /></label><label>Categoría<select value={productForm.categoria_id} onChange={(event) => setProductForm({ ...productForm, categoria_id: event.target.value })}><option value="">Sin categoría</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.nombre}</option>)}</select></label></div><label className="file-field">Imagen optimizada<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => setImageFile(event.target.files?.[0] ?? null)} /><small>{imageFile ? imageFile.name : 'JPG, PNG, WebP o GIF · máximo 5 MB'}</small></label><label className="check-field"><input type="checkbox" checked={productForm.activo} onChange={(event) => setProductForm({ ...productForm, activo: event.target.checked })} /> Producto activo</label><div className="form-actions"><button type="button" className="secondary-button" onClick={resetProduct}>Limpiar</button><button className="primary" disabled={busy}>{busy ? 'Guardando…' : 'Guardar producto'}</button></div></form>
+          <form className="panel product-form" onSubmit={saveProduct}><div className="panel-heading"><div><p className="eyebrow">{editingProduct ? 'EDICIÓN' : 'NUEVO REGISTRO'}</p><h2>{editingProduct ? 'Editar producto' : 'Agregar producto'}</h2></div></div><label>Nombre<input required maxLength="160" value={productForm.nombre} onChange={(event) => setProductForm({ ...productForm, nombre: event.target.value })} /></label><label>Descripción<textarea rows="3" value={productForm.descripcion} onChange={(event) => setProductForm({ ...productForm, descripcion: event.target.value })} /></label><div className="form-grid"><label>Precio<input required type="number" min="0" step="0.01" value={productForm.precio} onChange={(event) => setProductForm({ ...productForm, precio: event.target.value })} /></label><label>Categoría<select value={productForm.categoria_id} onChange={(event) => setProductForm({ ...productForm, categoria_id: event.target.value })}><option value="">Sin categoría</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.nombre}</option>)}</select></label></div><label className="file-field">Imagen optimizada<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => setImageFile(event.target.files?.[0] ?? null)} /><small>{imageFile ? imageFile.name : 'JPG, PNG, WebP o GIF · máximo 5 MB'}</small></label><label className="check-field"><input type="checkbox" checked={productForm.activo} onChange={(event) => setProductForm({ ...productForm, activo: event.target.checked })} /> Producto activo</label>{editingProduct && <section className="modifier-admin"><div className="modifier-admin-heading"><div><p className="eyebrow">PRECIO EXTRA</p><h3>Modificadores</h3></div><span>{modifiers.filter((modifier) => modifier.activo).length} activos</span></div><div className="modifier-admin-list">{modifiers.map((modifier) => <div className={!modifier.activo ? 'modifier-admin-row inactive' : 'modifier-admin-row'} key={modifier.id}><div><strong>{modifier.nombre}</strong><small>+{money(modifier.precio_extra)}</small></div><span>{modifier.activo ? 'Activo' : 'Inactivo'}</span><button type="button" className="mini-button" onClick={() => editModifier(modifier)}>Editar</button>{modifier.activo && <button type="button" className="mini-button danger" onClick={() => deleteModifier(modifier)}>Desactivar</button>}</div>)}{!modifiers.length && <p className="empty-state">Este producto no tiene modificadores.</p>}</div><div className="modifier-admin-form"><input placeholder="Nombre del modificador" maxLength="120" value={modifierForm.nombre} onChange={(event) => setModifierForm({ ...modifierForm, nombre: event.target.value })} /><input type="number" min="0" step="0.01" placeholder="Precio extra" value={modifierForm.precio_extra} onChange={(event) => setModifierForm({ ...modifierForm, precio_extra: event.target.value })} /><button type="button" className="primary" onClick={saveModifier} disabled={busy || !modifierForm.nombre || modifierForm.precio_extra === ''}>{editingModifier ? 'Guardar' : 'Agregar'}</button>{editingModifier && <button type="button" className="link-button" onClick={() => { setEditingModifier(null); setModifierForm(emptyModifier()); }}>Cancelar</button>}</div></section>}<div className="form-actions"><button type="button" className="secondary-button" onClick={resetProduct}>Limpiar</button><button className="primary" disabled={busy}>{busy ? 'Guardando…' : 'Guardar producto'}</button></div></form>
         </section>
       )}
 
@@ -354,7 +412,7 @@ function App() {
 
       {tab === 'reportes' && <section className="reports-layout"><div className="panel report-toolbar"><div><p className="eyebrow">ANÁLISIS</p><h2>Ventas del día</h2></div><label className="date-control">Fecha<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label></div>{report && <><div className="summary-grid"><div className="metric-card"><span>Ventas</span><strong>{money(report.resumen.ventas)}</strong><small>{report.resumen.ordenes} órdenes</small></div><div className="metric-card"><span>Total cobrado</span><strong>{money(report.resumen.cobrado)}</strong><small>Pagos registrados</small></div>{report.por_metodo.map((method) => <div className="metric-card" key={method.metodo}><span>{method.metodo === 'efectivo' ? 'Efectivo' : 'Tarjeta'}</span><strong>{money(method.total)}</strong><small>{method.pagos} pagos</small></div>)}</div><div className="report-columns"><section className="panel data-panel"><div className="panel-heading"><div><p className="eyebrow">PRODUCTIVIDAD</p><h2>Productos más vendidos</h2></div></div><div className="ranking-list">{report.productos_top.map((product, index) => <div className="ranking-row" key={product.id}><b>{index + 1}</b><div><strong>{product.nombre}</strong><small>{product.categoria_nombre ?? 'Sin categoría'} · {product.cantidad} unidades</small></div><strong>{money(product.total)}</strong></div>)}{!report.productos_top.length && <p className="empty-state">No hay ventas para esta fecha.</p>}</div></section><section className="panel data-panel"><div className="panel-heading"><div><p className="eyebrow">MÉTODOS</p><h2>Distribución de cobros</h2></div></div><div className="method-list">{report.por_metodo.map((method) => <div className="method-row" key={method.metodo}><div><strong>{method.metodo === 'efectivo' ? 'Efectivo' : 'Tarjeta'}</strong><small>{method.pagos} operaciones</small></div><strong>{money(method.total)}</strong></div>)}{!report.por_metodo.length && <p className="empty-state">No hay pagos para esta fecha.</p>}</div></section></div></>}</section>}
 
-      {tab === 'usuarios' && <section className="users-layout"><section className="panel data-panel"><div className="panel-heading"><div><p className="eyebrow">ACCESOS</p><h2>Usuarios y roles</h2></div><span>{users.length} registros</span></div><div className="user-list">{users.map((user) => <div className={!user.activo ? 'user-row inactive' : 'user-row'} key={user.id}><div className="avatar">{user.nombre.slice(0, 1).toUpperCase()}</div><div className="user-copy"><strong>{user.nombre}</strong><small>@{user.usuario}</small></div><span className="role-badge">{roles.find(([value]) => value === user.rol)?.[1] ?? user.rol}</span><span className={user.activo ? 'active-label' : 'inactive-label'}>{user.activo ? 'Activo' : 'Inactivo'}</span><button className="secondary-button" onClick={() => editUser(user)}>Editar</button>{user.activo && <button className="link-button" onClick={() => deactivateUser(user)}>Desactivar</button>}</div>)}{!users.length && <p className="empty-state">No hay usuarios.</p>}</div></section><form className="panel user-form" onSubmit={saveUser}><div className="panel-heading"><div><p className="eyebrow">{editingUser ? 'EDICIÓN' : 'NUEVO REGISTRO'}</p><h2>{editingUser ? 'Editar usuario' : 'Agregar usuario'}</h2></div></div><p className="form-note">La contraseña y autenticación se habilitarán en la etapa de producción. Por ahora se administran identidad, rol y estado.</p><label>Nombre<input required value={userForm.nombre} onChange={(event) => setUserForm({ ...userForm, nombre: event.target.value })} /></label><label>Usuario<input required value={userForm.usuario} onChange={(event) => setUserForm({ ...userForm, usuario: event.target.value })} /></label><label>Rol<select value={userForm.rol} onChange={(event) => setUserForm({ ...userForm, rol: event.target.value })}>{roles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="check-field"><input type="checkbox" checked={userForm.activo} onChange={(event) => setUserForm({ ...userForm, activo: event.target.checked })} /> Usuario activo</label><div className="form-actions"><button type="button" className="secondary-button" onClick={() => { setEditingUser(null); setUserForm(emptyUser()); }}>Limpiar</button><button className="primary" disabled={busy}>{busy ? 'Guardando…' : 'Guardar usuario'}</button></div></form></section>}
+      {tab === 'usuarios' && <section className="users-layout"><section className="panel data-panel"><div className="panel-heading"><div><p className="eyebrow">ACCESOS</p><h2>Usuarios y roles</h2></div><span>{users.length} registros</span></div><div className="user-list">{users.map((user) => <div className={!user.activo ? 'user-row inactive' : 'user-row'} key={user.id}><div className="avatar">{user.nombre.slice(0, 1).toUpperCase()}</div><div className="user-copy"><strong>{user.nombre}</strong><small>@{user.usuario}</small></div><span className="role-badge">{roles.find(([value]) => value === user.rol)?.[1] ?? user.rol}</span><span className={user.activo ? 'active-label' : 'inactive-label'}>{user.activo ? 'Activo' : 'Inactivo'}</span><button className="secondary-button" onClick={() => editUser(user)}>Editar</button>{user.activo && <button className="link-button" onClick={() => deactivateUser(user)}>Desactivar</button>}</div>)}{!users.length && <p className="empty-state">No hay usuarios.</p>}</div></section><form className="panel user-form" onSubmit={saveUser}><div className="panel-heading"><div><p className="eyebrow">{editingUser ? 'EDICIÓN' : 'NUEVO REGISTRO'}</p><h2>{editingUser ? 'Editar usuario' : 'Agregar usuario'}</h2></div></div><p className="form-note">La contraseña se solicita al crear un usuario y se puede reemplazar al editarlo.</p><label>Nombre<input required value={userForm.nombre} onChange={(event) => setUserForm({ ...userForm, nombre: event.target.value })} /></label><label>Usuario<input required value={userForm.usuario} onChange={(event) => setUserForm({ ...userForm, usuario: event.target.value })} /></label><label>Rol<select value={userForm.rol} onChange={(event) => setUserForm({ ...userForm, rol: event.target.value })}>{roles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="check-field"><input type="checkbox" checked={userForm.activo} onChange={(event) => setUserForm({ ...userForm, activo: event.target.checked })} /> Usuario activo</label><div className="form-actions"><button type="button" className="secondary-button" onClick={() => { setEditingUser(null); setUserForm(emptyUser()); }}>Limpiar</button><button className="primary" disabled={busy}>{busy ? 'Guardando…' : 'Guardar usuario'}</button></div></form></section>}
       {loginOpen && (
         <div className="admin-login-backdrop" role="presentation">
           <form className="admin-login-dialog" onSubmit={login}>
