@@ -902,10 +902,65 @@ Estas limitaciones son aceptables únicamente para la etapa actual de desarrollo
 local. La fase 7 ya documenta la red autorizada y Tailscale, pero todavía deben
 configurarse en la mini PC y cerrarse los permisos de los clientes operativos.
 
+## Auditoria ligera de endurecimiento
+
+La revision de octubre de 2026 se hizo con un criterio de desarrollo y pruebas
+en moviles, no como una certificacion formal de seguridad. No se cambio CORS
+porque durante esta etapa se necesita conectar tablet, KDS y administracion desde
+distintos origenes y ya esta identificado como pendiente.
+
+### Controles que ya estan aplicados
+
+- Contrasenas almacenadas con `scrypt` y tokens firmados con expiracion.
+- Validacion de entrada con Zod y restricciones equivalentes en PostgreSQL.
+- Consultas parametrizadas, transacciones y bloqueos de filas para operaciones
+  sensibles.
+- Roles separados para `admin`, `cajero`, `mesero` y `cocina`.
+- `helmet`, limite de cuerpo JSON, ocultamiento de `X-Powered-By` y manejo
+  centralizado de errores.
+- Idempotencia para reintentos de rondas e items desde la tablet.
+- El Service Worker solo conserva el shell y el catalogo; no cachea sesiones,
+  ordenes, pagos ni reportes, y elimina versiones anteriores de su cache.
+- Imagenes limitadas por tipo y tamano, procesadas con Sharp y servidas desde
+  un volumen separado.
+- Healthchecks, reinicio automatico y migraciones ejecutadas antes del backend.
+- `npm audit --omit=dev` sin vulnerabilidades reportadas durante esta revision.
+
+### Mejoras recomendadas, sin bloquear las pruebas moviles
+
+| Prioridad | Mejora | Estado |
+| --- | --- | --- |
+| Alta en produccion | Configurar HTTPS/TLS y restringir CORS y Socket.io a los origenes autorizados. | Pendiente, no aplicar antes de validar la red local. |
+| Alta en produccion | No publicar PostgreSQL ni el puerto directo del backend; exponer solamente Nginx o enlazar esos puertos a `127.0.0.1`. | Pendiente para el despliegue de la mini PC. |
+| Alta en produccion | Hacer obligatorios `AUTH_REQUIRED=true`, `AUTH_SECRET` y contrasenas no predeterminadas; eliminar los valores de respaldo del Compose de produccion. | El ejemplo de produccion ya lo indica; falta validar el archivo real. |
+| Media | Migrar el token del navegador a una cookie `HttpOnly`/`Secure` o agregar una politica CSP estricta. | Pendiente; `localStorage` se conserva para no romper la PWA durante pruebas. |
+| Media | Anadir limitacion de intentos al login, auditoria de acciones administrativas y un identificador de solicitud en logs. | Pendiente. |
+| Media | Ejecutar pruebas de integracion con PostgreSQL, Socket.io y dos dispositivos fisicos. | Pendiente por falta de Docker/dispositivos disponibles. |
+| Baja | Centralizar logs y copiar backups fuera de la mini PC; probar una restauracion periodica. | Documentado para fase 7. |
+
+### Checklist movil antes de endurecer produccion
+
+1. Levantar el sistema en Docker y comprobar `/api/health` desde la computadora
+   y desde la IP local.
+2. Abrir tablet y KDS desde dos dispositivos distintos usando la IP de la
+   computadora, no `localhost`.
+3. Iniciar sesion con una cuenta de mesero y una de cocina; confirmar que cada
+   rol solo ve y ejecuta sus operaciones.
+4. Crear una orden con modificadores, enviarla a cocina, avanzar sus estados y
+   cerrar con pago.
+5. Desconectar un dispositivo, enviar una ronda, reconectar y confirmar que la
+   cola offline sincroniza una sola vez.
+6. Repetir la prueba con una segunda tablet para confirmar eventos Socket.io y
+   actualizacion de mesas.
+7. Solo despues restringir CORS, cerrar puertos directos y activar HTTPS.
+
 ## Pruebas realizadas
 
-La entrega actual fue verificada por última vez el 18 de septiembre de 2026 de
-las siguientes maneras:
+La evidencia historica de ejecucion completa fue verificada el 18 de septiembre
+de 2026 de las siguientes maneras. El 22 de octubre de 2026 se repitieron la
+auditoria de dependencias, la sintaxis, los builds de los tres frontends y las
+pruebas automatizadas disponibles; la integracion con Docker y dispositivos
+moviles sigue pendiente.
 
 - Instalación y auditoría de las dependencias npm sin vulnerabilidades reportadas
   (`npm audit --omit=dev` y auditoría completa: 0 vulnerabilidades).

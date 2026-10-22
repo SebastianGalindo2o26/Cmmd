@@ -1,4 +1,5 @@
-const CACHE_NAME = 'pos-tablet-shell-v1';
+const CACHE_NAME = 'pos-tablet-shell-v2';
+const CACHE_PREFIX = 'pos-tablet-shell-';
 const SHELL_PREFIX = '/tablet/';
 
 self.addEventListener('install', (event) => {
@@ -6,13 +7,19 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil((async () => {
+    const cacheNames = await caches.keys();
+    await Promise.all(cacheNames
+      .filter((cacheName) => cacheName.startsWith(CACHE_PREFIX) && cacheName !== CACHE_NAME)
+      .map((cacheName) => caches.delete(cacheName)));
+    await self.clients.claim();
+  })());
 });
 
 function isCacheableApi(request) {
-  return request.method === 'GET'
-    && new URL(request.url).pathname.startsWith('/api/')
-    && ['GET'].includes(request.method);
+  if (request.method !== 'GET') return false;
+  const pathname = new URL(request.url).pathname;
+  return ['/api/categorias', '/api/productos', '/api/modificadores'].includes(pathname);
 }
 
 self.addEventListener('fetch', (event) => {
