@@ -10,7 +10,6 @@ const currency = new Intl.NumberFormat('es-GT', {
   currency: import.meta.env.VITE_CURRENCY || 'GTQ',
 });
 
-const quickNotes = ['Sin cebolla', 'Extra queso', 'Sin picante', 'Para llevar'];
 
 function money(value) {
   return currency.format(Number(value ?? 0));
@@ -322,14 +321,6 @@ function App() {
     setModifierSelection([]);
   }
 
-  function addQuickNote(lineId, note) {
-    setCart((current) => current.map((item) => {
-      if (item.lineId !== lineId) return item;
-      const notes = item.notas ? `${item.notas}, ${note}` : note;
-      return { ...item, notas: notes.slice(0, 500) };
-    }));
-  }
-
   function updateCartItem(lineId, changes) {
     setCart((current) => current
       .map((item) => item.lineId === lineId ? { ...item, ...changes } : item)
@@ -479,22 +470,12 @@ function App() {
             : <button className="secondary" onClick={() => setLoginOpen(true)}>Acceder</button>}
           {(pendingSync > 0 || syncing) && <span className="sync-status">{syncing ? 'Sincronizando…' : `${pendingSync} pendiente${pendingSync === 1 ? '' : 's'}`}</span>}
           {order && (
-            <>
-              <button
-                className="charge-button"
-                onClick={openPayment}
-                disabled={busy || Number(order.total) <= 0}
-                title={cart.length || hasUnsentItems ? 'Envía primero los productos a cocina' : ''}
-              >
-                Cobrar {Number(order.saldo) > 0 ? money(order.saldo) : ''}
-              </button>
               <button
                 className="secondary"
                 onClick={() => { setOrder(null); setCart([]); setPaymentOpen(false); }}
               >
                 Cambiar mesa
               </button>
-            </>
           )}
         </div>
       </header>
@@ -603,9 +584,6 @@ function App() {
                   placeholder="Nota para cocina"
                   onChange={(event) => updateCartItem(item.lineId, { notas: event.target.value })}
                 />
-                <div className="quick-notes" aria-label="Modificadores rápidos">
-                  {quickNotes.map((note) => <button type="button" key={note} onClick={() => addQuickNote(item.lineId, note)}>{note}</button>)}
-                </div>
               </article>
             ))}
 
@@ -637,13 +615,23 @@ function App() {
                 </div>
               </>
             )}
-            <button
-              className="primary send-button"
-              disabled={!order || busy || (!cart.length && !hasUnsentItems)}
-              onClick={sendToKitchen}
-            >
-              {busy ? 'Procesando…' : 'Enviar a cocina'}
-            </button>
+            <div className="order-actions">
+              <button
+                className="primary send-button"
+                disabled={!order || busy || (!cart.length && !hasUnsentItems)}
+                onClick={sendToKitchen}
+              >
+                {busy ? 'Procesando…' : 'Enviar a cocina'}
+              </button>
+              <button
+                className="charge-button"
+                onClick={openPayment}
+                disabled={!order || busy || Number(order.saldo) <= 0 || cart.length > 0 || hasUnsentItems}
+                title={cart.length || hasUnsentItems ? 'Envía primero los productos a cocina' : ''}
+              >
+                Cobrar {order && Number(order.saldo) > 0 ? money(order.saldo) : ''}
+              </button>
+            </div>
           </footer>
         </aside>
       </section>
@@ -666,21 +654,18 @@ function App() {
               <button className="icon-button" aria-label="Cerrar producto" onClick={() => setModifierProduct(null)}>×</button>
             </header>
             <div className="modifier-content">
-              <p className="modifier-help">Elige modificadores con precio o escribe una nota para cocina.</p>
+              <p className="modifier-help">Elige las opciones disponibles para este producto o escribe una indicación para cocina.</p>
               {modifiers.filter((modifier) => modifier.producto_id === modifierProduct.id).length > 0 && (
-                <div className="paid-modifier-options">
+                <div className="paid-modifier-options" aria-label="Opciones de este producto">
                   {modifiers.filter((modifier) => modifier.producto_id === modifierProduct.id).map((modifier) => {
                     const selected = modifierSelection.some((item) => item.id === modifier.id);
-                    return <button type="button" className={selected ? 'selected' : ''} key={modifier.id} onClick={() => setModifierSelection((current) => selected ? current.filter((item) => item.id !== modifier.id) : [...current, modifier])}>
-                      {modifier.nombre} · +{money(modifier.precio_extra)}
+                    return <button type="button" className={selected ? 'selected' : ''} aria-pressed={selected} key={modifier.id} onClick={() => setModifierSelection((current) => selected ? current.filter((item) => item.id !== modifier.id) : [...current, modifier])}>
+                      {modifier.nombre}{Number(modifier.precio_extra) > 0 ? ` · +${money(modifier.precio_extra)}` : ''}
                     </button>;
                   })}
                 </div>
               )}
-              <div className="modifier-options">
-                {quickNotes.map((note) => <button type="button" key={note} onClick={() => setModifierNote((current) => current ? `${current}, ${note}` : note)}>{note}</button>)}
-              </div>
-              <label className="modifier-input">Nota personalizada<textarea rows="3" maxLength="500" value={modifierNote} onChange={(event) => setModifierNote(event.target.value)} placeholder="Ej. salsa aparte" /></label>
+              <label className="modifier-input">Nota para cocina<textarea rows="3" maxLength="500" value={modifierNote} onChange={(event) => setModifierNote(event.target.value)} placeholder="Indicación especial para este producto" /></label>
               <div className="dialog-actions"><button type="button" className="secondary" onClick={() => setModifierProduct(null)}>Cancelar</button><button type="button" className="primary" onClick={confirmProduct}>Agregar · {money(Number(modifierProduct.precio) + modifierSelection.reduce((sum, modifier) => sum + Number(modifier.precio_extra), 0))}</button></div>
             </div>
           </section>

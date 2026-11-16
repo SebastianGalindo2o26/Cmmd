@@ -90,7 +90,8 @@ esto no cambia el código del prototipo.
 
 La tablet incorpora el flujo de caja previsto en el plan:
 
-- Botón de cobro asociado a la orden y mesa seleccionadas.
+- Botón de cobro junto a **Enviar a cocina** al pie de la orden, asociado a la
+  mesa seleccionada y habilitado cuando no quedan productos por enviar.
 - Resumen de productos, total, total pagado y saldo pendiente.
 - Selección de efectivo o tarjeta; “tarjeta” registra el resultado del datáfono
   externo, no procesa una transacción bancaria.
@@ -132,7 +133,7 @@ activa.
 La tablet ahora usa una interfaz tipo kiosco optimizada para operación táctil:
 
 - Selector de mesa destacado antes de comenzar una orden y encabezado compacto
-  con estado de conexión y acciones de cobro.
+  con estado de conexión; las acciones de cocina y cobro están al pie de la orden.
 - Grid de productos con imágenes WebP, descripción, precio y objetivos táctiles
   grandes; la imagen se carga de forma diferida.
 - Búsqueda rápida dentro de la categoría activa para localizar productos sin
@@ -140,14 +141,16 @@ La tablet ahora usa una interfaz tipo kiosco optimizada para operación táctil:
 - Carrito lateral siempre visible con líneas separadas, cantidades, notas y
   accesos de un toque para `Sin cebolla`, `Extra queso`, `Sin picante` y
   `Para llevar`.
-- Popup de modificadores rápidos al agregar un producto; sus selecciones se
-  envían como notas de cocina sin cambiar el precio del producto.
+- Al agregar un producto se muestran solo las opciones activas configuradas
+  para ese producto. Las opciones de precio cero sirven para indicaciones como
+  "sin cebolla"; la nota libre sigue disponible para casos especiales.
 - Diseño responsive para tablet horizontal y pantallas estrechas, manteniendo
   el flujo existente de enviar a cocina y cobrar.
 
-Los atajos de esta fase siguen siendo notas operativas. Los modificadores con
-precio extra ya tienen CRUD administrativo y se guardan como parte histórica
-de cada ítem enviado.
+Los modificadores se administran por producto, pueden tener precio cero o
+precio extra y se guardan como parte histórica de cada ítem enviado. La
+interfaz móvil apila sus paneles, permite desplazamiento vertical y mantiene
+los diálogos dentro del alto visible del teléfono.
 
 ### Fase 6 - avance local de resiliencia
 
@@ -734,8 +737,9 @@ son atómicos. Dos pagos concurrentes bloquean la misma orden; dos cierres de
 
 ### Pantalla de cobro de la tablet
 
-Después de enviar todos los productos a cocina aparece **Cobrar** en la barra
-superior. El diálogo toma el saldo desde la orden guardada, no desde el carrito
+**Enviar a cocina** y **Cobrar** están juntos al pie de la orden. **Cobrar** se
+habilita cuando la orden tiene saldo y no quedan productos por enviar. El
+diálogo toma el saldo desde la orden guardada, no desde el carrito
 local. Al registrar un pago parcial permanece abierto, vuelve a consultar la
 orden y muestra el nuevo saldo y el historial. El botón **Saldo completo** llena
 el importe exacto y **Mitad** facilita un primer pago dividido.
@@ -1002,7 +1006,7 @@ moviles sigue pendiente.
 - Orden de prueba cobrada por Q38.00: historial diario, correlativo 1, resumen
   de ventas, método efectivo y producto top comprobados en los reportes.
 - Validación de fase 5: build de tablet con la búsqueda, selector de mesa,
-  imágenes diferidas y popup de notas rápidas incluidos en el bundle servido
+  imágenes diferidas y opciones por producto incluidas en el bundle servido
   por Nginx; los tres frontends recompilaron correctamente con Compose.
 
 La revisión visual detectó inicialmente que Nginx entregaba `.js` y `.css` como
