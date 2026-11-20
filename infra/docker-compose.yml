@@ -32,6 +32,8 @@ services:
       UPLOAD_DIR: ${UPLOAD_DIR:-uploads}
       AUTH_REQUIRED: ${AUTH_REQUIRED:-false}
       AUTH_SECRET: ${AUTH_SECRET:-dev-only-change-this-secret-please-replace-1234}
+      KITCHEN_PRINTER_HOST: ${KITCHEN_PRINTER_HOST:-}
+      KITCHEN_PRINTER_PORT: ${KITCHEN_PRINTER_PORT:-9100}
     ports:
       - "3000:3000"
     volumes:

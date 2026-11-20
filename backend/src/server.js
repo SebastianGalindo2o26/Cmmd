@@ -4,6 +4,7 @@ import { app } from './app.js';
 import { config } from './config.js';
 import { pool } from './db/connection.js';
 import { configureKitchenSockets } from './sockets/cocina.js';
+import { startKitchenPrintWorker } from './services/kitchen-printer.js';
 
 const server = createServer(app);
 const io = new Server(server, {
@@ -12,6 +13,7 @@ const io = new Server(server, {
 
 app.set('io', io);
 configureKitchenSockets(io);
+const stopKitchenPrintWorker = startKitchenPrintWorker();
 
 server.listen(config.port, '0.0.0.0', () => {
   console.log(`API POS escuchando en http://0.0.0.0:${config.port}`);
@@ -19,6 +21,7 @@ server.listen(config.port, '0.0.0.0', () => {
 
 async function shutdown(signal) {
   console.log(`${signal} recibido; cerrando servidor`);
+  stopKitchenPrintWorker();
   io.disconnectSockets(true);
   server.close(async () => {
     await pool.end();

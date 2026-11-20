@@ -316,6 +316,20 @@ ordenesRouter.post('/:id/enviar-cocina', requireRoleIfEnabled('mesero', 'cajero'
       event: previousResult.rows[0].tenia_rondas ? 'orden_actualizada' : 'nueva_orden',
       payload: { ...order, items: itemsResult.rows },
     };
+    if (config.kitchenPrinterHost) {
+      await client.query(
+        `INSERT INTO kitchen_print_jobs (orden_id, ticket) VALUES ($1, $2::jsonb)`,
+        [orderId, JSON.stringify({
+          orden_id: orderId,
+          mesa_numero: order.mesa_numero,
+          nueva_ronda: previousResult.rows[0].tenia_rondas,
+          enviado_at: new Date().toISOString(),
+          items: itemsResult.rows.map(({ cantidad, producto_nombre, notas, modificadores }) => ({
+            cantidad, producto_nombre, notas, modificadores,
+          })),
+        })],
+      );
+    }
     const responseBody = { evento: body.event, ...body.payload };
     await saveIdempotentResponse(client, idempotencyKey, endpoint, responseBody);
     return { body, responseBody, replayed: false };

@@ -798,6 +798,31 @@ grandes y se adapta a tablet horizontal y pantallas más estrechas.
 
 ### KDS de cocina
 
+La TV de cocina sigue mostrando las comandas en tiempo real. Opcionalmente se
+puede conectar una impresora térmica de red compatible con ESC/POS por TCP. Para
+activarla, configura `KITCHEN_PRINTER_HOST` con la IP de la impresora y
+`KITCHEN_PRINTER_PORT` (normalmente `9100`). Si el host está vacío, no se crean
+tickets de impresión. Cada pulsación de **Enviar a cocina** crea un ticket con
+solo los ítems de esa ronda: el primer envío dice **PRIMER ENVIO** y los
+siguientes **NUEVA RONDA**. Incluye mesa, orden, hora, cantidad, producto,
+opciones y nota; no imprime precios. La migración `004_kitchen_print_jobs.sql`
+crea una cola persistente. Si la impresora no responde, el ticket queda
+pendiente y el servidor reintenta mientras esté activo. La orden y la TV no
+dependen del estado de la impresora.
+
+El envío TCP confirma que se entregaron bytes a la conexión, no que el papel
+salió físicamente. Ante un corte justo después de recibirlos puede repetirse un
+ticket; por eso cada uno muestra orden y tipo de ronda. Conviene hacer una
+prueba real con el modelo de impresora antes de operar y revisar los tickets
+pendientes en `kitchen_print_jobs` si falta papel o red.
+
+Sin impresora física se puede validar el formato y envío TCP con
+`node --test --test-isolation=none backend/test/kitchen-printer.test.js`. La
+prueba levanta una impresora simulada en `127.0.0.1`, recibe los bytes ESC/POS
+y comprueba que coincidan con el ticket de la ronda. No comprueba corte de papel,
+ancho, codificación ni conexión del modelo real; esas pruebas se hacen cuando
+se conozca la impresora.
+
 La aplicación Alpine.js consulta `/api/ordenes/cocina/activas` al iniciar y al
 reconectarse. Esto evita perder las comandas si la TV se recarga. Después recibe
 las rondas nuevas mediante Socket.io.

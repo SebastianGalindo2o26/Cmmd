@@ -44,6 +44,14 @@ function readAuthSecret(nodeEnv) {
   return secret;
 }
 
+function readPrinterPort() {
+  const port = Number(process.env.KITCHEN_PRINTER_PORT ?? 9100);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('KITCHEN_PRINTER_PORT debe ser un puerto valido');
+  }
+  return port;
+}
+
 const nodeEnv = process.env.NODE_ENV ?? 'development';
 export const config = Object.freeze({
   databaseUrl: required('DATABASE_URL'),
@@ -53,4 +61,6 @@ export const config = Object.freeze({
   uploadDir: path.resolve(process.cwd(), process.env.UPLOAD_DIR ?? 'uploads'),
   authRequired: readBoolean('AUTH_REQUIRED'),
   authSecret: readAuthSecret(nodeEnv),
+  kitchenPrinterHost: process.env.KITCHEN_PRINTER_HOST?.trim() || null,
+  kitchenPrinterPort: readPrinterPort(),
 });
